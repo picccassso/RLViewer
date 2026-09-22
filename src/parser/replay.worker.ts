@@ -248,6 +248,13 @@ self.onmessage = async (e: MessageEvent) => {
         framesBuffer[frameOffset + 7] = bVel.x;
         framesBuffer[frameOffset + 8] = bVel.y;
         framesBuffer[frameOffset + 9] = bVel.z;
+      } else if (f > 0) {
+        // Keep the last valid transform through unreplicated frames. Writing a
+        // synthetic centre-field ball here creates a visible one-frame jump.
+        const previousFrameOffset = frameOffset - TOTAL_FLOATS_PER_FRAME;
+        for (let i = 0; i < FLOATS_PER_BALL; i++) {
+          framesBuffer[frameOffset + i] = framesBuffer[previousFrameOffset + i];
+        }
       } else {
         // Fallback: resting at center ground (Z = 92.75 uu in RL -> Y = 92.75 in Three)
         framesBuffer[frameOffset + 0] = 0;
@@ -299,8 +306,16 @@ self.onmessage = async (e: MessageEvent) => {
 
             framesBuffer[pOffset + 11] = flags;
           } else {
-            // Player inactive or off field
-            framesBuffer[pOffset + 6] = 1; // rot.w
+            // Player inactive or off field. Preserve its last transform so an
+            // interpolation ending on this frame cannot pull it to the origin.
+            if (f > 0) {
+              const previousPlayerOffset = pOffset - TOTAL_FLOATS_PER_FRAME;
+              for (let i = 0; i < 11; i++) {
+                framesBuffer[pOffset + i] = framesBuffer[previousPlayerOffset + i];
+              }
+            } else {
+              framesBuffer[pOffset + 6] = 1; // rot.w
+            }
             framesBuffer[pOffset + 11] = 0; // isPresent = false
           }
         } else {

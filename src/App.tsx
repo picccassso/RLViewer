@@ -3,6 +3,7 @@ import { ParsedReplayData, FrameState } from './types/replay';
 import { parseReplayBuffer, loadSampleReplay } from './parser/replayParser';
 import { CameraMode } from './camera/CameraSuite';
 import { CameraSettings, DEFAULT_CAMERA_SETTINGS } from './math/cameraMath';
+import { getFrameTime } from './math/frameUnpacker';
 import { ReplayVisualizerCanvas } from './scene/ReplayVisualizerCanvas';
 import { Scoreboard } from './components/Scoreboard';
 import { PlayerTelemetry } from './components/PlayerTelemetry';
@@ -23,11 +24,14 @@ export const App: React.FC = () => {
   const [frameState, setFrameState] = useState<FrameState | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
+  const [seekTarget, setSeekTarget] = useState<{ time: number; id: number } | null>(null);
 
   // Camera & Followed Player State
   const [cameraMode, setCameraMode] = useState<CameraMode>('pov');
   const [activePlayerIndex, setActivePlayerIndex] = useState<number>(0);
-  const [isBallCam, setIsBallCam] = useState<boolean>(true);
+  // null follows the selected player's recorded Ball Cam state. A boolean is
+  // only used after the viewer explicitly presses the Ball Cam toggle.
+  const [ballCamOverride, setBallCamOverride] = useState<boolean | null>(null);
   const [cameraSettings, setCameraSettings] = useState<CameraSettings>(DEFAULT_CAMERA_SETTINGS);
 
   // 1. Initial Load: Auto-preload sample replay file
@@ -69,6 +73,8 @@ export const App: React.FC = () => {
       setCurrentTime(0);
       setCurrentFrame(0);
       setActivePlayerIndex(0);
+      setBallCamOverride(null);
+      setSeekTarget({ time: 0, id: Date.now() });
       if (data.players[0]) {
         setCameraSettings(data.players[0].camera_settings);
       }
@@ -92,6 +98,8 @@ export const App: React.FC = () => {
       setCurrentTime(0);
       setCurrentFrame(0);
       setActivePlayerIndex(0);
+      setBallCamOverride(null);
+      setSeekTarget({ time: 0, id: Date.now() });
       if (data.players[0]) {
         setCameraSettings(data.players[0].camera_settings);
       }
@@ -114,6 +122,8 @@ export const App: React.FC = () => {
       if (cameraMode !== 'pov') {
         setCameraMode('pov');
       }
+      // A newly selected POV should follow that player's actual camera events.
+      setBallCamOverride(null);
     },
     [replayData, cameraMode]
   );
@@ -124,9 +134,13 @@ export const App: React.FC = () => {
   }, []);
 
   // BallCam Toggle
+  const recordedBallCam =
+    frameState?.players.find((player) => player.info.index === activePlayerIndex)?.ballCamActive ?? true;
+  const isBallCam = ballCamOverride ?? recordedBallCam;
+
   const handleToggleBallCam = useCallback(() => {
-    setIsBallCam((prev) => !prev);
-  }, []);
+    setBallCamOverride((override) => !(override ?? recordedBallCam));
+  }, [recordedBallCam]);
 
   // Time update callback from 3D canvas render loop
   const handleTimeUpdate = useCallback((time: number, frame: number, state: FrameState) => {
@@ -138,14 +152,16 @@ export const App: React.FC = () => {
   // Seek time
   const handleSeekTime = useCallback((time: number) => {
     setCurrentTime(time);
+    setSeekTarget({ time, id: Date.now() });
   }, []);
 
   // Seek frame
   const handleSeekFrame = useCallback(
     (frame: number) => {
       if (!replayData) return;
-      const time = frame / (replayData.frameRate || 30);
+      const time = getFrameTime(replayData, frame);
       setCurrentTime(time);
+      setSeekTarget({ time, id: Date.now() });
     },
     [replayData]
   );
@@ -155,11 +171,12 @@ export const App: React.FC = () => {
     (deltaFrames: number) => {
       if (!replayData) return;
       setIsPlaying(false);
-      const fps = replayData.frameRate || 30;
-      const targetTime = Math.max(0, Math.min(replayData.duration, currentTime + deltaFrames / fps));
+      const targetFrame = Math.max(0, Math.min(replayData.totalFrames - 1, currentFrame + deltaFrames));
+      const targetTime = getFrameTime(replayData, targetFrame);
       setCurrentTime(targetTime);
+      setSeekTarget({ time: targetTime, id: Date.now() });
     },
-    [replayData, currentTime]
+    [replayData, currentFrame]
   );
 
   // Live running match score based on goals scored at or before currentTime
@@ -186,8 +203,9 @@ export const App: React.FC = () => {
         playbackSpeed={playbackSpeed}
         cameraMode={cameraMode}
         activePlayerIndex={activePlayerIndex}
-        isBallCam={isBallCam}
+        ballCamOverride={ballCamOverride}
         cameraSettings={cameraSettings}
+        seekTarget={seekTarget}
         onTimeUpdate={handleTimeUpdate}
         onSelectPlayer={handleSelectPlayer}
         onTogglePlay={handleTogglePlay}

@@ -22,6 +22,7 @@ interface CarEntity {
   boostFlame: THREE.Mesh;
   hitboxWireframe: THREE.LineSegments;
   isModelLoaded: boolean;
+  lastDrawnBoost: number;
 }
 
 export class CarManager {
@@ -137,6 +138,7 @@ export class CarManager {
         boostFlame,
         hitboxWireframe,
         isModelLoaded: false,
+        lastDrawnBoost: -1,
       };
 
       this.carEntities.set(player.index, entity);
@@ -312,6 +314,12 @@ export class CarManager {
   }
 
   private drawNameplate(entity: CarEntity, info: PlayerInfo, boost: number) {
+    const roundedBoost = Math.round(boost);
+    if (entity.lastDrawnBoost === roundedBoost) {
+      return;
+    }
+    entity.lastDrawnBoost = roundedBoost;
+
     const canvas = entity.nameplateCanvas;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;

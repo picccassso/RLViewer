@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { ParsedReplayData, FrameState } from '../types/replay';
-import { unpackFrame } from '../math/frameUnpacker';
+import { getFrameSampleAtTime, unpackFrame } from '../math/frameUnpacker';
 import { StadiumManager } from './StadiumManager';
 import { BoostPadManager } from './BoostPadManager';
 import { BallManager } from './BallManager';
@@ -16,8 +16,9 @@ interface ReplayVisualizerCanvasProps {
   playbackSpeed: number;
   cameraMode: CameraMode;
   activePlayerIndex: number;
-  isBallCam: boolean;
+  ballCamOverride: boolean | null;
   cameraSettings: CameraSettings;
+  seekTarget?: { time: number; id: number } | null;
   onTimeUpdate: (time: number, frameIndex: number, state: FrameState) => void;
   onSelectPlayer: (index: number) => void;
   onTogglePlay: () => void;
@@ -31,8 +32,9 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
   playbackSpeed,
   cameraMode,
   activePlayerIndex,
-  isBallCam,
+  ballCamOverride,
   cameraSettings,
+  seekTarget,
   onTimeUpdate,
   onSelectPlayer,
   onTogglePlay,
@@ -40,6 +42,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const lastHudUpdateRef = useRef<number>(0);
 
   // References to three.js scene managers
   const managersRef = useRef<{
@@ -140,24 +143,36 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     const { cameraSuite } = managersRef.current;
     cameraSuite.setMode(cameraMode);
     cameraSuite.setPlayer(activePlayerIndex);
-    cameraSuite.setBallCam(isBallCam);
+    // null means reproduce the selected player's recorded Ball Cam changes.
+    cameraSuite.setBallCam(ballCamOverride);
     cameraSuite.applySettings(cameraSettings);
-  }, [cameraMode, activePlayerIndex, isBallCam, cameraSettings]);
+  }, [cameraMode, activePlayerIndex, ballCamOverride, cameraSettings]);
 
-  // Sync currentTime when seeking
+  // Apply explicit user seek actions (timeline scrubbing, clicking event marks, frame stepping)
   useEffect(() => {
-    if (managersRef.current) {
-      const diff = Math.abs(managersRef.current.clockTime - currentTime);
-      // Only sync when paused or if user seeked (>80ms difference)
-      // to avoid feedback jitter from delayed React state during continuous playback
-      if (!isPlaying || diff > 0.08) {
-        managersRef.current.clockTime = currentTime;
-        if (diff > 0.4) {
-          managersRef.current.ball.resetTrail();
-        }
-      }
+    if (!managersRef.current || !seekTarget) return;
+
+    const diff = Math.abs(managersRef.current.clockTime - seekTarget.time);
+    managersRef.current.clockTime = seekTarget.time;
+    if (diff > 0.4) {
+      managersRef.current.ball.resetTrail();
     }
-  }, [currentTime, isPlaying]);
+
+    // When paused, immediately unpack and render the target frame for snappy feedback
+    if (!isPlaying && replayData) {
+      const { renderer, scene, cameraSuite, boostPads, ball, cars } = managersRef.current;
+      const { frameA, frameB, alpha } = getFrameSampleAtTime(replayData, seekTarget.time);
+
+      const frameState = unpackFrame(replayData, frameA, frameB, alpha);
+      ball.update(frameState.ball.position, frameState.ball.rotation);
+      cars.updateCars(frameState);
+      boostPads.updateStates(frameState.boostPadsAvailable, 0.016);
+      cameraSuite.update(frameState, 0.016);
+      renderer.render(scene, cameraSuite.camera);
+
+      onTimeUpdate(seekTarget.time, frameState.frameIndex, frameState);
+    }
+  }, [seekTarget, isPlaying, replayData, onTimeUpdate]);
 
   // Render & Playback Loop
   useEffect(() => {
@@ -180,11 +195,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       }
 
       const matchTime = managersRef.current.clockTime;
-      const fps = replayData.frameRate || 30;
-      const exactFrame = matchTime * fps;
-      const frameA = Math.floor(exactFrame);
-      const frameB = Math.min(frameA + 1, replayData.totalFrames - 1);
-      const alpha = exactFrame - frameA;
+      const { frameA, frameB, alpha } = getFrameSampleAtTime(replayData, matchTime);
 
       // Unpack smooth interpolated frame state
       const frameState = unpackFrame(replayData, frameA, frameB, alpha);
@@ -200,8 +211,13 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       // Render
       renderer.render(scene, cameraSuite.camera);
 
-      // Callback to React HUD
-      onTimeUpdate(matchTime, frameState.frameIndex, frameState);
+      // Callback to React HUD throttled to ~30 FPS during playback
+      // to keep the Three.js 60-144 FPS render loop buttery smooth
+      const nowMs = performance.now();
+      if (!isPlaying || nowMs - lastHudUpdateRef.current >= 33) {
+        lastHudUpdateRef.current = nowMs;
+        onTimeUpdate(matchTime, frameState.frameIndex, frameState);
+      }
     };
 
     animId = requestAnimationFrame(renderLoop);

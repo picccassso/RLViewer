@@ -181,6 +181,52 @@ describe('3. BallCam Overhead Singularity Clamping', () => {
     expect(result.elevationRad).toBeLessThan(MAX_BALL_ELEVATION_RAD);
     expect(result.elevationRad).toBeGreaterThan(0);
   });
+
+  it('keeps an airborne car in the lower framing when the ball is below it', () => {
+    const carPos = new THREE.Vector3(0, 900, 0);
+    const lowBall = new THREE.Vector3(1200, 92.75, 0);
+    const settings = { ...DEFAULT_CAMERA_SETTINGS, angle: -5 };
+    const result = computeBallCam(carPos, lowBall, settings);
+
+    expect(result.elevationRad).toBeCloseTo((-5 * Math.PI) / 180, 6);
+
+    const cameraToCar = carPos.clone().sub(result.cameraPosition);
+    const viewDirection = result.lookTarget.clone().sub(result.cameraPosition);
+    const carElevation = Math.atan2(
+      cameraToCar.y,
+      Math.hypot(cameraToCar.x, cameraToCar.z)
+    );
+    const viewElevation = Math.atan2(
+      viewDirection.y,
+      Math.hypot(viewDirection.x, viewDirection.z)
+    );
+
+    // The car's angular elevation is below the view centre, so it renders in
+    // the lower part of the viewport instead of above the player horizon.
+    expect(carElevation).toBeLessThan(viewElevation);
+  });
+
+  it('accepts a stable orbit anchor as the ball crosses overhead', () => {
+    const carPos = new THREE.Vector3(0, 20, 0);
+    const orbitDirection = new THREE.Vector3(1, 0, 0);
+    const before = computeBallCam(
+      carPos,
+      new THREE.Vector3(-1, 1500, 0),
+      DEFAULT_CAMERA_SETTINGS,
+      0,
+      orbitDirection
+    );
+    const after = computeBallCam(
+      carPos,
+      new THREE.Vector3(1, 1500, 0),
+      DEFAULT_CAMERA_SETTINGS,
+      0,
+      orbitDirection
+    );
+
+    expect(before.cameraPosition.distanceTo(after.cameraPosition)).toBeCloseTo(0, 6);
+    expect(before.cameraPosition.x).toBeGreaterThan(carPos.x);
+  });
 });
 
 describe('4. Boost Pad Respawn Timer Clock Logic', () => {

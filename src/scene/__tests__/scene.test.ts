@@ -522,4 +522,54 @@ describe('Scene Graph & Manager Integrity Verification', () => {
     cars.dispose();
     expect(scene.children.length).toBe(0);
   });
+
+  it('CarManager: dirty-checks nameplate canvas updates to avoid redundant GPU uploads', () => {
+    const scene = new THREE.Scene();
+    const cars = new CarManager(scene);
+    const players = createMockPlayers();
+    cars.initCars(players);
+
+    const frameState = createMockFrameState();
+    frameState.players[0].boost = 50.2;
+    cars.updateCars(frameState);
+
+    const carEntity = (cars as any).carEntities.get(0);
+    expect(carEntity).toBeDefined();
+
+    // Mock 2D context to simulate browser environment
+    const mockCtx = {
+      clearRect: () => {},
+      beginPath: () => {},
+      roundRect: () => {},
+      fill: () => {},
+      stroke: () => {},
+      fillText: () => {},
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 0,
+      font: '',
+      textAlign: '',
+    };
+    carEntity.nameplateCanvas.getContext = () => mockCtx;
+
+    // First update with boost 50.2 (rounds to 50)
+    frameState.players[0].boost = 50.2;
+    cars.updateCars(frameState);
+    expect(carEntity.lastDrawnBoost).toBe(50);
+    const initialVersion = carEntity.nameplate.material.map.version;
+    expect(initialVersion).toBeGreaterThan(0);
+
+    // Same boost (rounds to 50): should NOT trigger canvas redraw or texture version bump
+    frameState.players[0].boost = 50.4;
+    cars.updateCars(frameState);
+    expect(carEntity.nameplate.material.map.version).toBe(initialVersion);
+
+    // Changed boost (rounds to 49): should trigger canvas redraw and texture version bump
+    frameState.players[0].boost = 49.1;
+    cars.updateCars(frameState);
+    expect(carEntity.lastDrawnBoost).toBe(49);
+    expect(carEntity.nameplate.material.map.version).toBeGreaterThan(initialVersion);
+
+    cars.dispose();
+  });
 });

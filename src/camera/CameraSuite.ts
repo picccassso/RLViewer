@@ -25,6 +25,8 @@ export class CameraSuite {
   private currentCamPos: THREE.Vector3 = new THREE.Vector3(0, 300, -1000);
   private currentCamQuat: THREE.Quaternion = new THREE.Quaternion();
   private directorCamPos: THREE.Vector3 = new THREE.Vector3(0, 1200, -3500);
+  private ballCamOrbitYaw: number = 0;
+  private hasBallCamOrbitYaw: boolean = false;
 
   constructor(domElement: HTMLElement, aspect: number) {
     this.domElement = domElement;
@@ -54,6 +56,9 @@ export class CameraSuite {
   }
 
   public setPlayer(playerIndex: number, playerSettings?: CameraSettings) {
+    if (this.activePlayerIndex !== playerIndex) {
+      this.hasBallCamOrbitYaw = false;
+    }
     this.activePlayerIndex = playerIndex;
     if (playerSettings) {
       this.applySettings(playerSettings);
@@ -148,16 +153,55 @@ export class CameraSuite {
     // Compute Car Cam with Horizon-Locked roll stability
     const carCam = computeHorizonLockedCarCam(carPos, carQuat, this.currentSettings, carSpeed);
 
+    // Track a persistent orbit around the player. Directly rebuilding this
+    // direction from ball-to-car every frame makes it reverse by 180 degrees
+    // when the ball crosses overhead. Rate-limiting the shortest yaw arc keeps
+    // the player framed while reproducing Rocket League's camera swivel.
+    const ballToCarGround = new THREE.Vector3(
+      carPos.x - ballPos.x,
+      0,
+      carPos.z - ballPos.z
+    );
+    if (ballToCarGround.lengthSq() > 25) {
+      const desiredYaw = Math.atan2(ballToCarGround.z, ballToCarGround.x);
+      if (!this.hasBallCamOrbitYaw) {
+        this.ballCamOrbitYaw = desiredYaw;
+        this.hasBallCamOrbitYaw = true;
+      } else {
+        const yawDelta = Math.atan2(
+          Math.sin(desiredYaw - this.ballCamOrbitYaw),
+          Math.cos(desiredYaw - this.ballCamOrbitYaw)
+        );
+        const swivelSpeed = Math.max(1, this.currentSettings.swivel_speed || 5);
+        const swivelRate = 8 + swivelSpeed * 3;
+        this.ballCamOrbitYaw += yawDelta * (1 - Math.exp(-swivelRate * deltaTime));
+      }
+    }
+    const ballCamOrbitDirection = new THREE.Vector3(
+      Math.cos(this.ballCamOrbitYaw),
+      0,
+      Math.sin(this.ballCamOrbitYaw)
+    );
+
     // Compute BallCam with Overhead Singularity Clamping (<= 82 deg)
-    const ballCam = computeBallCam(carPos, ballPos, this.currentSettings, carSpeed);
+    const ballCam = computeBallCam(
+      carPos,
+      ballPos,
+      this.currentSettings,
+      carSpeed,
+      ballCamOrbitDirection
+    );
 
     // Slerp blend between Car Cam and Ball Cam
     const blended = blendCamera(carCam, ballCam, this.ballCamBlend);
 
     // Apply stiffness interpolation: stiffness 0.0 (loose lag) to 1.0 (rigid lock)
     const stiffness = Math.min(Math.max(this.currentSettings.stiffness || 0.45, 0), 1);
-    const posLerpRate = Math.min(1.0, (15 + stiffness * 45) * deltaTime);
-    const rotSlerpRate = Math.min(1.0, (18 + stiffness * 42) * deltaTime);
+    // Exponential damping is stable across 60 Hz, high-refresh displays, and
+    // the occasional long frame; a linear k * dt factor changes the feel with
+    // render cadence and makes dropped frames visible as camera bumps.
+    const posLerpRate = 1 - Math.exp(-(15 + stiffness * 45) * deltaTime);
+    const rotSlerpRate = 1 - Math.exp(-(18 + stiffness * 42) * deltaTime);
 
     this.currentCamPos.lerp(blended.position, posLerpRate);
     this.currentCamQuat.slerp(blended.quaternion, rotSlerpRate);

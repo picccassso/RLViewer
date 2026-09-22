@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { unpackFrame } from '../frameUnpacker';
+import { getFrameSampleAtTime, unpackFrame } from '../frameUnpacker';
 import {
   ParsedReplayData,
   TOTAL_FLOATS_PER_FRAME,
@@ -125,5 +125,44 @@ describe('Frame Unpacker & Interpolation', () => {
     // Pad 0 was picked up in frame 1
     expect(state1.boostPadsAvailable[0]).toBe(false);
     expect(state1.boostPadsAvailable[1]).toBe(true);
+
+    // Sampling uses the recorded timestamps rather than an averaged FPS.
+    const sample = getFrameSampleAtTime(
+      { ...mockData, totalFrames: 2, duration: 0.033 },
+      0.00825
+    );
+    expect(sample.frameA).toBe(0);
+    expect(sample.frameB).toBe(1);
+    expect(sample.alpha).toBeCloseTo(0.25, 4);
+
+    // Do not pull a visible player towards an absent next-frame placeholder.
+    buffer[p0Offset1 + 11] = 0;
+    const beforeDespawn = unpackFrame(mockData, 0, 1, 0.75);
+    expect(beforeDespawn.players[0].position.x).toBe(1000);
+  });
+
+  it('holds the last frame instead of interpolating across replay discontinuities', () => {
+    const totalFrames = 2;
+    const buffer = new Float32Array(totalFrames * TOTAL_FLOATS_PER_FRAME);
+    const metaOffset = FLOATS_PER_BALL + MAX_PLAYERS * FLOATS_PER_PLAYER;
+    buffer[metaOffset] = 0;
+    buffer[TOTAL_FLOATS_PER_FRAME + metaOffset] = 2;
+
+    const replayData: ParsedReplayData = {
+      totalFrames,
+      duration: 2,
+      frameRate: 30,
+      players: [],
+      boostPads: [],
+      tickMarks: [],
+      teamScores: { team0: 0, team1: 0 },
+      framesBuffer: buffer,
+    };
+
+    expect(getFrameSampleAtTime(replayData, 1)).toEqual({
+      frameA: 0,
+      frameB: 0,
+      alpha: 0,
+    });
   });
 });

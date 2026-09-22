@@ -131,25 +131,31 @@ export function computeBallCam(
   carPosition: THREE.Vector3,
   ballPosition: THREE.Vector3,
   settings: CameraSettings,
-  carSpeed: number = 0
+  carSpeed: number = 0,
+  cameraOrbitDirection?: THREE.Vector3
 ): { cameraPosition: THREE.Vector3; cameraQuaternion: THREE.Quaternion; lookTarget: THREE.Vector3; elevationRad: number } {
-  // Vector from ball to car in horizontal plane
-  const horizontalDiff = new THREE.Vector3(carPosition.x - ballPosition.x, 0, carPosition.z - ballPosition.z);
-  const horizDist = horizontalDiff.length();
-  
-  let horizDir = horizontalDiff.clone();
-  if (horizDist < 1e-4) {
-    horizDir.set(1, 0, 0);
+  // Ball Cam orbits to the opposite side of the player from the ball. This
+  // keeps both the player and ball in the central vertical composition instead
+  // of pinning only the ball to screen centre. CameraSuite supplies a smoothed
+  // persistent direction so an overhead crossing cannot flip this vector.
+  const horizontalDiff = new THREE.Vector3(
+    carPosition.x - ballPosition.x,
+    0,
+    carPosition.z - ballPosition.z
+  );
+  const orbitDirection = cameraOrbitDirection?.clone() ?? horizontalDiff;
+  orbitDirection.y = 0;
+  if (orbitDirection.lengthSq() < 1e-4) {
+    orbitDirection.set(1, 0, 0);
   } else {
-    horizDir.normalize();
+    orbitDirection.normalize();
   }
 
   // Distance extension
   const distMult = getSpeedDistanceMultiplier(carSpeed);
   const effectiveDistance = settings.distance * distMult;
 
-  // Position camera behind car relative to ball
-  const cameraPosition = carPosition.clone().add(horizDir.multiplyScalar(effectiveDistance));
+  const cameraPosition = carPosition.clone().add(orbitDirection.clone().multiplyScalar(effectiveDistance));
 
   // Dynamic height adjustment when ball is high
   const heightDelta = ballPosition.y - carPosition.y;
@@ -163,18 +169,24 @@ export function computeBallCam(
   const toBall = ballPosition.clone().sub(cameraPosition);
   const totalDist = toBall.length();
 
-  // Calculate elevation angle: angle above horizontal plane
-  let elevationRad = Math.asin(Math.min(Math.max(toBall.y / (totalDist || 1), -1), 1));
+  // Calculate elevation angle: angle above horizontal plane. Rocket League's
+  // camera angle remains the lower framing limit in Ball Cam: tracking a ball
+  // below an airborne car must not pitch the whole view so far down that the
+  // player's car ends up above screen centre.
+  const rawElevationRad = Math.asin(Math.min(Math.max(toBall.y / (totalDist || 1), -1), 1));
+  const configuredFloorRad = (Math.min(Math.max(settings.angle, -15), 0) * Math.PI) / 180;
+  let elevationRad = Math.min(
+    Math.max(rawElevationRad, configuredFloorRad),
+    MAX_BALL_ELEVATION_RAD
+  );
 
-  // Clamp overhead elevation to <= MAX_BALL_ELEVATION_RAD (82 degrees)
+  // Rebuild the look target when either vertical framing limit is active.
   let clampedLookTarget = ballPosition.clone();
-  if (elevationRad > MAX_BALL_ELEVATION_RAD) {
-    elevationRad = MAX_BALL_ELEVATION_RAD;
-    // Adjust look target to respect the clamp
-    const clampedY = cameraPosition.y + Math.sin(MAX_BALL_ELEVATION_RAD) * totalDist;
-    const clampedHorizDist = Math.cos(MAX_BALL_ELEVATION_RAD) * totalDist;
+  if (Math.abs(elevationRad - rawElevationRad) > 1e-6) {
+    const clampedY = cameraPosition.y + Math.sin(elevationRad) * totalDist;
+    const clampedHorizDist = Math.cos(elevationRad) * totalDist;
     const horizUnit = new THREE.Vector3(ballPosition.x - cameraPosition.x, 0, ballPosition.z - cameraPosition.z);
-    if (horizUnit.lengthSq() < 1e-4) horizUnit.set(0, 0, 1);
+    if (horizUnit.lengthSq() < 1e-4) horizUnit.copy(orbitDirection).negate();
     horizUnit.normalize();
     clampedLookTarget.set(
       cameraPosition.x + horizUnit.x * clampedHorizDist,
