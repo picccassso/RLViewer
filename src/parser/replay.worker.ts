@@ -10,6 +10,7 @@ import {
 } from '../types/replay';
 import { rlToThreeVec3, rlToThreeQuat } from '../math/coords';
 import { BOOST_PAD_RESPAWN_TIME, BoostPadClockManager } from '../math/boostPadClock';
+import { smoothReplayPositions } from '../math/motionSmoothing';
 
 import wasmUrl from '@rlrml/subtr-actor/rl_replay_subtr_actor_bg.wasm?url';
 
@@ -222,6 +223,7 @@ self.onmessage = async (e: MessageEvent) => {
 
     // Build the Float32Array streaming buffer
     const framesBuffer = new Float32Array(totalFrames * TOTAL_FLOATS_PER_FRAME);
+    const ballHasTransform = new Uint8Array(totalFrames);
     const uint32View = new Uint32Array(framesBuffer.buffer);
     const baseTime = metadataFrames[0]?.time ?? 0;
 
@@ -234,6 +236,7 @@ self.onmessage = async (e: MessageEvent) => {
       // 1. Ball (10 floats)
       const rawBall = rawBallFrames[f]?.Data?.rigid_body;
       if (rawBall && rawBall.location) {
+        ballHasTransform[f] = 1;
         const bPos = rlToThreeVec3(rawBall.location);
         const bRot = rawBall.rotation ? rlToThreeQuat(rawBall.rotation) : { x: 0, y: 0, z: 0, w: 1 };
         const bVel = rawBall.linear_velocity ? rlToThreeVec3(rawBall.linear_velocity) : { x: 0, y: 0, z: 0 };
@@ -346,6 +349,8 @@ self.onmessage = async (e: MessageEvent) => {
       uint32View[metaOffset + 2] = maskLow >>> 0;
       uint32View[metaOffset + 3] = maskHigh >>> 0;
     }
+
+    smoothReplayPositions(framesBuffer, totalFrames, ballHasTransform);
 
     const duration = framesBuffer[(totalFrames - 1) * TOTAL_FLOATS_PER_FRAME + FLOATS_PER_BALL + (MAX_PLAYERS * FLOATS_PER_PLAYER)];
     const frameRate = totalFrames > 1 && duration > 0 ? totalFrames / duration : 30;

@@ -19,6 +19,7 @@ interface ReplayVisualizerCanvasProps {
   ballCamOverride: boolean | null;
   cameraSettings: CameraSettings;
   seekTarget?: { time: number; id: number } | null;
+  showHud: boolean;
   onTimeUpdate: (time: number, frameIndex: number, state: FrameState) => void;
   onSelectPlayer: (index: number) => void;
   onTogglePlay: () => void;
@@ -35,6 +36,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
   ballCamOverride,
   cameraSettings,
   seekTarget,
+  showHud,
   onTimeUpdate,
   onSelectPlayer,
   onTogglePlay,
@@ -72,10 +74,8 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       antialias: true,
       powerPreference: 'high-performance',
     });
-    renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setSize(width, height);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
 
@@ -147,6 +147,10 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     cameraSuite.setBallCam(ballCamOverride);
     cameraSuite.applySettings(cameraSettings);
   }, [cameraMode, activePlayerIndex, ballCamOverride, cameraSettings]);
+
+  useEffect(() => {
+    managersRef.current?.cars.setNameplatesVisible(showHud);
+  }, [showHud]);
 
   // Apply explicit user seek actions (timeline scrubbing, clicking event marks, frame stepping)
   useEffect(() => {

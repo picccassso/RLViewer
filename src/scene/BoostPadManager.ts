@@ -1,19 +1,25 @@
 import * as THREE from 'three';
 import { ReplayBoostPad } from '../types/replay';
 
-interface PadMeshGroup {
+interface PadInstance {
   pad: ReplayBoostPad;
-  group: THREE.Group;
-  baseMesh: THREE.Mesh;
-  coreMesh: THREE.Mesh;
-  light?: THREE.PointLight;
   isAvailable: boolean;
+  rotation: number;
+}
+
+interface PadBatch {
+  isBig: boolean;
+  pads: PadInstance[];
+  base: THREE.InstancedMesh;
+  activeCore: THREE.InstancedMesh;
+  inactiveCore: THREE.InstancedMesh;
 }
 
 export class BoostPadManager {
   private scene: THREE.Scene;
-  private padMeshes: Map<number, PadMeshGroup> = new Map();
   private parentGroup: THREE.Group;
+  private batches: PadBatch[] = [];
+  private dummy = new THREE.Object3D();
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -24,119 +30,132 @@ export class BoostPadManager {
   public initPads(boostPads: ReplayBoostPad[]) {
     this.clear();
 
-    for (const pad of boostPads) {
-      const isBig = pad.size === 'Big';
-      const padGroup = new THREE.Group();
-      padGroup.position.set(pad.position.x, 0, pad.position.z);
+    for (const isBig of [true, false]) {
+      const pads = boostPads.filter((pad) => (pad.size === 'Big') === isBig);
+      if (pads.length === 0) continue;
 
-      // Base ring geometry
-      const baseRadius = isBig ? 140 : 55;
-      const baseHeight = isBig ? 12 : 5;
-      const baseGeo = new THREE.CylinderGeometry(baseRadius, baseRadius, baseHeight, 24);
-      const baseMat = new THREE.MeshStandardMaterial({
-        color: 0x1f2937,
-        metalness: 0.8,
-        roughness: 0.3,
-      });
-      const baseMesh = new THREE.Mesh(baseGeo, baseMat);
-      baseMesh.position.y = baseHeight / 2;
-      padGroup.add(baseMesh);
+      const radius = isBig ? 140 : 55;
+      const height = isBig ? 12 : 5;
+      const base = new THREE.InstancedMesh(
+        new THREE.CylinderGeometry(radius, radius, height, 24),
+        new THREE.MeshStandardMaterial({ color: 0x1f2937, metalness: 0.8, roughness: 0.3 }),
+        pads.length
+      );
 
-      // Glowing core / pickup pill
-      let coreMesh: THREE.Mesh;
-      let light: THREE.PointLight | undefined;
-
-      if (isBig) {
-        // Big Boost: floating glowing orb / cylinder
-        const coreGeo = new THREE.CylinderGeometry(baseRadius * 0.7, baseRadius * 0.7, 45, 24);
-        const coreMat = new THREE.MeshStandardMaterial({
-          color: 0xf59e0b,
-          emissive: 0xd97706,
-          emissiveIntensity: 1.2,
-          transparent: true,
-          opacity: 0.85,
-        });
-        coreMesh = new THREE.Mesh(coreGeo, coreMat);
-        coreMesh.position.y = 35;
-        padGroup.add(coreMesh);
-
-        // Ambient point light
-        light = new THREE.PointLight(0xf59e0b, 1.5, 450, 1.2);
-        light.position.set(0, 50, 0);
-        padGroup.add(light);
-      } else {
-        // Small pad: flat glowing disc
-        const coreGeo = new THREE.CylinderGeometry(baseRadius * 0.75, baseRadius * 0.75, baseHeight + 1, 16);
-        const coreMat = new THREE.MeshStandardMaterial({
-          color: 0xfbbf24,
-          emissive: 0xf59e0b,
-          emissiveIntensity: 0.9,
+      const coreGeometry = isBig
+        ? new THREE.CylinderGeometry(radius * 0.7, radius * 0.7, 45, 24)
+        : new THREE.CylinderGeometry(radius * 0.75, radius * 0.75, height + 1, 16);
+      const activeCore = new THREE.InstancedMesh(
+        coreGeometry,
+        new THREE.MeshStandardMaterial({
+          color: isBig ? 0xf59e0b : 0xfbbf24,
+          emissive: isBig ? 0xd97706 : 0xf59e0b,
+          emissiveIntensity: isBig ? 1.2 : 0.9,
           transparent: true,
           opacity: 0.9,
-        });
-        coreMesh = new THREE.Mesh(coreGeo, coreMat);
-        coreMesh.position.y = baseHeight / 2 + 0.5;
-        padGroup.add(coreMesh);
-      }
+        }),
+        pads.length
+      );
+      const inactiveCore = new THREE.InstancedMesh(
+        coreGeometry,
+        new THREE.MeshStandardMaterial({
+          color: 0x374151,
+          transparent: true,
+          opacity: 0.25,
+        }),
+        pads.length
+      );
 
-      this.parentGroup.add(padGroup);
-      this.padMeshes.set(pad.index, {
-        pad,
-        group: padGroup,
-        baseMesh,
-        coreMesh,
-        light,
-        isAvailable: true,
-      });
+      for (const mesh of [base, activeCore, inactiveCore]) {
+        // Pads span the field, so culling a whole batch would hide visible pads.
+        mesh.frustumCulled = false;
+        this.parentGroup.add(mesh);
+      }
+      activeCore.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+      const batch: PadBatch = {
+        isBig,
+        pads: pads.map((pad) => ({ pad, isAvailable: true, rotation: 0 })),
+        base,
+        activeCore,
+        inactiveCore,
+      };
+      this.batches.push(batch);
+
+      for (let i = 0; i < pads.length; i++) {
+        this.setInstanceTransform(base, i, pads[i], height / 2, 0);
+      }
+      base.instanceMatrix.needsUpdate = true;
+      this.rebuildCores(batch);
     }
   }
 
-  /**
-   * Updates boost pad visual states (glowing vs dimmed) based on live frame bitmasks.
-   */
+  private setInstanceTransform(
+    mesh: THREE.InstancedMesh,
+    index: number,
+    pad: ReplayBoostPad,
+    height: number,
+    rotation: number
+  ) {
+    this.dummy.position.set(pad.position.x, height, pad.position.z);
+    this.dummy.rotation.set(0, rotation, 0);
+    this.dummy.updateMatrix();
+    mesh.setMatrixAt(index, this.dummy.matrix);
+  }
+
+  private rebuildCores(batch: PadBatch, updateInactive = true) {
+    const coreHeight = batch.isBig ? 35 : 3;
+    let activeCount = 0;
+    let inactiveCount = 0;
+
+    for (const instance of batch.pads) {
+      const mesh = instance.isAvailable ? batch.activeCore : batch.inactiveCore;
+      const index = instance.isAvailable ? activeCount++ : inactiveCount++;
+      if (instance.isAvailable || updateInactive) {
+        this.setInstanceTransform(mesh, index, instance.pad, coreHeight, instance.rotation);
+      }
+    }
+
+    batch.activeCore.count = activeCount;
+    batch.inactiveCore.count = inactiveCount;
+    batch.activeCore.instanceMatrix.needsUpdate = true;
+    if (updateInactive) batch.inactiveCore.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Updates pad batches when pickups become available or enter cooldown. */
   public updateStates(availableList: boolean[], deltaTime: number = 0.016) {
-    for (let i = 0; i < availableList.length; i++) {
-      const padGroup = this.padMeshes.get(i);
-      if (!padGroup) continue;
-
-      const isAvailable = availableList[i];
-      if (padGroup.isAvailable !== isAvailable) {
-        padGroup.isAvailable = isAvailable;
-        const mat = padGroup.coreMesh.material as THREE.MeshStandardMaterial;
-
-        if (isAvailable) {
-          mat.color.setHex(padGroup.pad.size === 'Big' ? 0xf59e0b : 0xfbbf24);
-          mat.emissive.setHex(padGroup.pad.size === 'Big' ? 0xd97706 : 0xf59e0b);
-          mat.emissiveIntensity = padGroup.pad.size === 'Big' ? 1.2 : 0.9;
-          mat.opacity = 0.9;
-          if (padGroup.light) padGroup.light.intensity = 1.5;
-        } else {
-          // Dimmed cooldown state
-          mat.color.setHex(0x374151);
-          mat.emissive.setHex(0x000000);
-          mat.emissiveIntensity = 0;
-          mat.opacity = 0.25;
-          if (padGroup.light) padGroup.light.intensity = 0;
+    for (const batch of this.batches) {
+      let changed = false;
+      let hasActiveBigPad = false;
+      for (const instance of batch.pads) {
+        const available = availableList[instance.pad.index];
+        if (available !== undefined && available !== instance.isAvailable) {
+          instance.isAvailable = available;
+          changed = true;
+        }
+        if (batch.isBig && instance.isAvailable) {
+          instance.rotation += deltaTime * 1.5;
+          hasActiveBigPad = true;
         }
       }
-
-      // Gentle floating animation for big pads when active
-      if (padGroup.isAvailable && padGroup.pad.size === 'Big') {
-        padGroup.coreMesh.rotation.y += deltaTime * 1.5;
-      }
+      if (changed || hasActiveBigPad) this.rebuildCores(batch, changed);
     }
   }
 
   public clear() {
-    this.padMeshes.forEach((item) => {
-      this.parentGroup.remove(item.group);
-      item.baseMesh.geometry.dispose();
-      (item.baseMesh.material as THREE.Material).dispose();
-      item.coreMesh.geometry.dispose();
-      (item.coreMesh.material as THREE.Material).dispose();
-      if (item.light) item.light.dispose();
-    });
-    this.padMeshes.clear();
+    const geometries = new Set<THREE.BufferGeometry>();
+    const materials = new Set<THREE.Material>();
+    for (const batch of this.batches) {
+      for (const mesh of [batch.base, batch.activeCore, batch.inactiveCore]) {
+        this.parentGroup.remove(mesh);
+        mesh.dispose();
+        geometries.add(mesh.geometry);
+        materials.add(mesh.material as THREE.Material);
+      }
+    }
+    geometries.forEach((geometry) => geometry.dispose());
+    materials.forEach((material) => material.dispose());
+    this.batches = [];
   }
 
   public dispose() {

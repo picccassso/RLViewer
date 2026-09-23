@@ -37,16 +37,16 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   return (
-    <div className="flex flex-col gap-2 pointer-events-auto">
+    <div className="flex flex-col gap-1.5 pointer-events-auto">
       {/* 1. Camera Mode Toolbar */}
-      <div className="bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-1.5 shadow-2xl flex items-center gap-1">
+      <div className="ui-panel p-1 flex items-center gap-0.5">
         {/* POV Cam */}
         <button
           onClick={() => onSetMode('pov')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition-all ${
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-medium transition-colors ${
             mode === 'pov'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'bg-white/10 text-white'
+              : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
           }`}
           title="Player POV Chase Camera"
         >
@@ -57,10 +57,10 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
         {/* Director Cam */}
         <button
           onClick={() => onSetMode('director')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition-all ${
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-medium transition-colors ${
             mode === 'director'
-              ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/30'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'bg-white/10 text-white'
+              : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
           }`}
           title="Dynamic Broadcast Spectator Camera"
         >
@@ -71,10 +71,10 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
         {/* Free Orbit Cam */}
         <button
           onClick={() => onSetMode('free')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition-all ${
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-medium transition-colors ${
             mode === 'free'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'bg-white/10 text-white'
+              : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
           }`}
           title="Free-Fly Orbit Controls"
         >
@@ -85,10 +85,10 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
         {/* Tactical 2D Overhead */}
         <button
           onClick={() => onSetMode('tactical')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition-all ${
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-medium transition-colors ${
             mode === 'tactical'
-              ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/30'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'bg-white/10 text-white'
+              : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
           }`}
           title="Top-Down Tactical View"
         >
@@ -102,10 +102,10 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
         {/* BallCam Toggle Button */}
         <button
           onClick={onToggleBallCam}
-          className={`px-2.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all ${
+          className={`p-1.5 rounded text-[10px] transition-colors ${
             isBallCam
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/50'
-              : 'text-slate-400 hover:text-white'
+              ? 'bg-cyan-400/10 text-cyan-300'
+              : 'text-slate-500 hover:text-white'
           }`}
           title="Toggle Ball Cam [Space]"
         >
@@ -115,7 +115,7 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
         {/* Camera Settings Slider Toggle */}
         <button
           onClick={() => setShowSettingsModal(!showSettingsModal)}
-          className={`p-1.5 rounded-xl text-xs transition-all ${
+          className={`p-1.5 rounded text-xs transition-colors ${
             showSettingsModal
               ? 'bg-white/20 text-white'
               : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -128,8 +128,8 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
 
       {/* 2. Live 6-Player Switcher */}
       {players.length > 0 && (
-        <div className="bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-1.5 shadow-2xl flex items-center gap-1 overflow-x-auto max-w-[90vw]">
-          <span className="text-[10px] text-slate-500 font-mono uppercase px-1.5">
+        <div className="ui-panel p-1 flex items-center gap-0.5 overflow-x-auto max-w-[90vw]">
+          <span className="text-[9px] text-slate-600 uppercase tracking-wider px-1.5">
             Players
           </span>
 
@@ -141,20 +141,22 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
               <button
                 key={p.index}
                 onClick={() => onSelectPlayer(idx)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold font-display transition-all ${
+                className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
                   isSelected
                     ? isBlue
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/40 border border-blue-400'
-                      : 'bg-orange-600 text-white shadow-md shadow-orange-500/40 border border-orange-400'
+                      ? 'bg-blue-500/15 text-blue-200'
+                      : 'bg-orange-500/15 text-orange-200'
                     : isBlue
-                    ? 'text-blue-300 hover:bg-blue-900/30'
-                    : 'text-orange-300 hover:bg-orange-900/30'
+                    ? 'text-slate-500 hover:text-blue-200 hover:bg-white/5'
+                    : 'text-slate-500 hover:text-orange-200 hover:bg-white/5'
                 }`}
                 title={`Switch to ${p.name} [Key ${idx + 1}]`}
               >
-                <span className="w-4 h-4 rounded-full bg-white/20 text-[10px] font-mono flex items-center justify-center font-bold">
-                  {idx + 1}
-                </span>
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    isBlue ? 'bg-blue-500' : 'bg-orange-500'
+                  }`}
+                />
                 <span className="truncate max-w-[90px]">{p.name}</span>
               </button>
             );
@@ -164,9 +166,9 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
 
       {/* 3. Camera Settings Sliders Popover */}
       {showSettingsModal && (
-        <div className="bg-slate-900/95 backdrop-blur-2xl border border-white/15 rounded-2xl p-4 shadow-2xl w-80 flex flex-col gap-3 text-xs text-white">
+        <div className="ui-panel p-3 w-72 flex flex-col gap-3 text-xs text-white">
           <div className="flex items-center justify-between border-b border-white/10 pb-2">
-            <span className="font-bold font-display uppercase tracking-wider text-amber-400">
+            <span className="font-medium uppercase tracking-wider text-slate-300 text-[10px]">
               Camera Settings
             </span>
             <span className="text-[10px] text-slate-400 font-mono">

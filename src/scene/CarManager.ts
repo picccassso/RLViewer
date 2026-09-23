@@ -22,7 +22,6 @@ interface CarEntity {
   boostFlame: THREE.Mesh;
   hitboxWireframe: THREE.LineSegments;
   isModelLoaded: boolean;
-  lastDrawnBoost: number;
 }
 
 export class CarManager {
@@ -36,6 +35,9 @@ export class CarManager {
   private wheelModelCache: THREE.Group | null = null;
   private wheelModelPromise: Promise<THREE.Group> | null = null;
   private isDisposed: boolean = false;
+  private nameplatesVisible: boolean = true;
+  private groundShadows: THREE.InstancedMesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null = null;
+  private shadowTransform = new THREE.Object3D();
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -51,6 +53,28 @@ export class CarManager {
 
   public initCars(players: PlayerInfo[]) {
     this.clear();
+
+    const shadowSize = 64;
+    const shadowPixels = new Uint8Array(shadowSize * shadowSize * 4);
+    for (let y = 0; y < shadowSize; y++) {
+      for (let x = 0; x < shadowSize; x++) {
+        const radius = Math.hypot(x - 31.5, y - 31.5) / 31.5;
+        shadowPixels[(y * shadowSize + x) * 4 + 3] = Math.round(90 * Math.max(0, 1 - radius) ** 2);
+      }
+    }
+    const shadowTexture = new THREE.DataTexture(shadowPixels, shadowSize, shadowSize, THREE.RGBAFormat);
+    shadowTexture.magFilter = THREE.LinearFilter;
+    shadowTexture.minFilter = THREE.LinearFilter;
+    shadowTexture.needsUpdate = true;
+    this.groundShadows = new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ map: shadowTexture, transparent: true, depthWrite: false }),
+      players.length
+    );
+    this.groundShadows.count = 0;
+    this.groundShadows.frustumCulled = false;
+    this.groundShadows.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.carsGroup.add(this.groundShadows);
 
     for (const player of players) {
       const carGroup = new THREE.Group();
@@ -111,7 +135,7 @@ export class CarManager {
       boostFlame.visible = false;
       carGroup.add(boostFlame);
 
-      // 2. Floating 3D Nameplate Sprite with Player Name and Live Boost Pill
+      // 2. Floating 3D nameplate. Draw it once to avoid uploading a canvas texture every frame.
       const nameplateCanvas =
         typeof document !== 'undefined'
           ? document.createElement('canvas')
@@ -127,6 +151,7 @@ export class CarManager {
       const nameplate = new THREE.Sprite(nameplateMat);
       nameplate.scale.set(160, 40, 1);
       nameplate.position.set(0, hitbox.height + 75, 0);
+      nameplate.visible = this.nameplatesVisible;
       carGroup.add(nameplate);
 
       const entity: CarEntity = {
@@ -138,10 +163,10 @@ export class CarManager {
         boostFlame,
         hitboxWireframe,
         isModelLoaded: false,
-        lastDrawnBoost: -1,
       };
 
       this.carEntities.set(player.index, entity);
+      this.drawNameplate(entity, player);
 
       // Async load real GLB model for this car
       this.loadGLBCarModel(player, entity, fallbackCar, cabin);
@@ -287,11 +312,12 @@ export class CarManager {
   }
 
   public updateCars(frameState: FrameState) {
+    let shadowCount = 0;
     for (const playerState of frameState.players) {
       const entity = this.carEntities.get(playerState.info.index);
       if (!entity) continue;
 
-      const { isPresent, isDemoed, position, rotation, boost, boostActive } = playerState;
+      const { isPresent, isDemoed, position, rotation, boostActive } = playerState;
 
       // Visibility: hidden if absent or demoed
       entity.group.visible = isPresent && !isDemoed;
@@ -301,25 +327,29 @@ export class CarManager {
       entity.group.position.set(position.x, position.y, position.z);
       entity.group.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
 
+      if (this.groundShadows && position.y < 500) {
+        const shadowScale = 1 + Math.max(0, position.y) / 1000;
+        this.shadowTransform.position.set(position.x, 3, position.z);
+        this.shadowTransform.rotation.set(-Math.PI / 2, 0, 0);
+        this.shadowTransform.scale.set(180 * shadowScale, 120 * shadowScale, 1);
+        this.shadowTransform.updateMatrix();
+        this.groundShadows.setMatrixAt(shadowCount++, this.shadowTransform.matrix);
+      }
+
       // Boost flame
       entity.boostFlame.visible = boostActive;
       if (boostActive) {
         const s = 0.8 + Math.random() * 0.4;
         entity.boostFlame.scale.set(s, s, s);
       }
-
-      // Update Floating Nameplate
-      this.drawNameplate(entity, playerState.info, boost);
+    }
+    if (this.groundShadows) {
+      this.groundShadows.count = shadowCount;
+      if (shadowCount) this.groundShadows.instanceMatrix.needsUpdate = true;
     }
   }
 
-  private drawNameplate(entity: CarEntity, info: PlayerInfo, boost: number) {
-    const roundedBoost = Math.round(boost);
-    if (entity.lastDrawnBoost === roundedBoost) {
-      return;
-    }
-    entity.lastDrawnBoost = roundedBoost;
-
+  private drawNameplate(entity: CarEntity, info: PlayerInfo) {
     const canvas = entity.nameplateCanvas;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -352,31 +382,6 @@ export class CarManager {
     ctx.font = 'bold 36px Rajdhani, sans-serif';
     ctx.fillText(info.name, 56, 62);
 
-    // Boost Pill background
-    const boostX = 350;
-    const boostW = 130;
-    const boostH = 40;
-    const boostY = 44;
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.beginPath();
-    ctx.roundRect(boostX, boostY, boostW, boostH, 8);
-    ctx.fill();
-
-    // Boost Fill
-    const fillW = Math.max(0, Math.min(boost / 100, 1)) * (boostW - 4);
-    ctx.fillStyle = '#f59e0b';
-    ctx.beginPath();
-    ctx.roundRect(boostX + 2, boostY + 2, fillW, boostH - 4, 6);
-    ctx.fill();
-
-    // Boost Text
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 28px Rajdhani, monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${Math.round(boost)}`, boostX + boostW / 2, boostY + 30);
-    ctx.textAlign = 'left';
-
     entity.nameplate.material.map!.needsUpdate = true;
   }
 
@@ -390,7 +395,22 @@ export class CarManager {
     });
   }
 
+  public setNameplatesVisible(visible: boolean) {
+    this.nameplatesVisible = visible;
+    this.carEntities.forEach((car) => {
+      car.nameplate.visible = visible;
+    });
+  }
+
   public clear() {
+    if (this.groundShadows) {
+      this.carsGroup.remove(this.groundShadows);
+      this.groundShadows.dispose();
+      this.groundShadows.geometry.dispose();
+      this.groundShadows.material.map?.dispose();
+      this.groundShadows.material.dispose();
+      this.groundShadows = null;
+    }
     this.carEntities.forEach((c) => {
       this.carsGroup.remove(c.group);
       c.nameplate.material.dispose();

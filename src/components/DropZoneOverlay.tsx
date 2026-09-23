@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UploadCloud, FileCode, Play, Loader2 } from 'lucide-react';
+import { UploadCloud, FileCode, Play, Loader2, EyeOff } from 'lucide-react';
 
 interface DropZoneOverlayProps {
   isLoading: boolean;
   loadingMessage: string;
   onFileLoaded: (buffer: ArrayBuffer, fileName: string) => void;
   onLoadSample: () => void;
+  showControls: boolean;
+  onHideHud: () => void;
 }
 
 export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
@@ -13,6 +15,8 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
   loadingMessage,
   onFileLoaded,
   onLoadSample,
+  showControls,
+  onHideHud,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,14 +93,10 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
         }`}
       >
         {isDragging && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-md text-white select-none pointer-events-none">
-            <UploadCloud size={64} className="text-cyan-400 animate-bounce mb-4" />
-            <h2 className="text-3xl font-bold font-display uppercase tracking-wider">
-              Drop Rocket League .replay File
-            </h2>
-            <p className="text-sm font-mono text-slate-300 mt-2">
-              100% Client-Side WebAssembly Parsing (Zero-Server, Zero-Account)
-            </p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 text-white select-none pointer-events-none">
+            <UploadCloud size={32} className="text-slate-300 mb-3" />
+            <h2 className="text-base font-semibold tracking-wide">Drop replay file</h2>
+            <p className="text-xs text-slate-500 mt-1">.replay files are parsed locally</p>
           </div>
         )}
       </div>
@@ -104,14 +104,11 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
       {/* Loading Overlay */}
       {isLoading && (
         <div className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md text-white select-none">
-          <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl flex flex-col items-center max-w-sm text-center">
-            <Loader2 size={40} className="text-cyan-400 animate-spin mb-4" />
-            <h3 className="text-xl font-bold font-display uppercase tracking-wider mb-1">
-              Parsing Replay
-            </h3>
-            <p className="text-xs text-slate-400 font-mono mb-4">{loadingMessage}</p>
-            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-              <div className="bg-gradient-to-r from-blue-500 to-cyan-400 h-full w-full animate-pulse" />
+          <div className="ui-panel p-5 flex items-center gap-3 max-w-sm text-left">
+            <Loader2 size={20} className="text-slate-300 animate-spin shrink-0" />
+            <div>
+              <h3 className="text-sm font-semibold">Parsing replay</h3>
+              <p className="text-xs text-slate-500 mt-0.5">{loadingMessage}</p>
             </div>
           </div>
         </div>
@@ -127,25 +124,37 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
       />
 
       {/* Top Right Replay Controls */}
-      <div className="fixed top-3 right-4 z-30 flex items-center gap-2 pointer-events-auto">
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/90 border border-white/10 hover:border-white/25 backdrop-blur-lg text-xs font-semibold text-slate-200 transition-all shadow-lg"
-          title="Upload .replay file"
-        >
-          <FileCode size={14} className="text-blue-400" />
-          <span>Load .replay</span>
-        </button>
+      {showControls && (
+        <div className="fixed top-3 right-3 z-30 ui-panel p-1 flex items-center gap-1 pointer-events-auto">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="ui-button flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium"
+            title="Open a .replay file"
+          >
+            <FileCode size={13} />
+            <span>Open</span>
+          </button>
 
-        <button
-          onClick={onLoadSample}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/80 hover:bg-blue-600 border border-blue-400/40 backdrop-blur-lg text-xs font-semibold text-white transition-all shadow-lg"
-          title="Reload Sample Match"
-        >
-          <Play size={13} fill="white" />
-          <span>Sample Match</span>
-        </button>
-      </div>
+          <button
+            onClick={onLoadSample}
+            className="ui-button flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium"
+            title="Reload sample match"
+          >
+            <Play size={12} />
+            <span>Sample</span>
+          </button>
+
+          <div className="h-4 w-px bg-white/10 mx-0.5" />
+          <button
+            onClick={onHideHud}
+            className="ui-button p-1.5"
+            title="Hide interface (H)"
+            aria-label="Hide interface"
+          >
+            <EyeOff size={13} />
+          </button>
+        </div>
+      )}
     </>
   );
 };

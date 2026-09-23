@@ -384,8 +384,9 @@ describe('Scene Graph & Manager Integrity Verification', () => {
     const dirLight = lightsGroup.children.find((c) => (c as THREE.DirectionalLight).isDirectionalLight) as THREE.DirectionalLight;
     expect(dirLight).toBeDefined();
     expect(lightsGroup.children).toContain(dirLight.target);
+    expect(lightsGroup.children.some((light) => light instanceof THREE.PointLight || light instanceof THREE.SpotLight)).toBe(false);
 
-    // Verify updateMatrixWorld executes cleanly across lights, floodlight targets, and turf
+    // Verify updateMatrixWorld executes cleanly across lights and turf
     expect(() => scene.updateMatrixWorld(true)).not.toThrow();
 
     // Verify scene children include stadium, procedural field, and lights groups
@@ -426,9 +427,23 @@ describe('Scene Graph & Manager Integrity Verification', () => {
 
     boostPads.initPads(mockPads);
     expect(() => scene.updateMatrixWorld(true)).not.toThrow();
+    const padBatches = scene.children[0].children as THREE.InstancedMesh[];
+    expect(padBatches).toHaveLength(6);
+    expect(padBatches.map((batch) => batch.count)).toEqual([6, 6, 0, 28, 28, 0]);
+    const firstPadMatrix = new THREE.Matrix4();
+    padBatches[0].getMatrixAt(0, firstPadMatrix);
+    expect(firstPadMatrix.elements[12]).toBe(mockPads[0].position.x);
+    expect(firstPadMatrix.elements[13]).toBe(6);
+    expect(firstPadMatrix.elements[14]).toBe(mockPads[0].position.z);
+    let localLights = 0;
+    scene.traverse((object) => {
+      if (object instanceof THREE.PointLight) localLights++;
+    });
+    expect(localLights).toBe(0);
 
     const availability = Array.from({ length: 34 }, (_, i) => i % 2 === 0);
     boostPads.updateStates(availability, 0.016);
+    expect(padBatches.map((batch) => batch.count)).toEqual([6, 3, 3, 28, 14, 14]);
     expect(() => scene.updateMatrixWorld(true)).not.toThrow();
 
     boostPads.dispose();
@@ -494,6 +509,16 @@ describe('Scene Graph & Manager Integrity Verification', () => {
     const frameState = createMockFrameState();
     ball.update(frameState.ball.position, frameState.ball.rotation);
     cars.updateCars(frameState);
+    const groundShadows = (cars as any).groundShadows as THREE.InstancedMesh;
+    expect(groundShadows.count).toBe(2);
+    const firstShadowMatrix = new THREE.Matrix4();
+    groundShadows.getMatrixAt(0, firstShadowMatrix);
+    expect(firstShadowMatrix.elements[12]).toBe(frameState.players[0].position.x);
+    expect(firstShadowMatrix.elements[13]).toBe(3);
+    expect(firstShadowMatrix.elements[14]).toBe(frameState.players[0].position.z);
+    frameState.players[0].position.y = 600;
+    cars.updateCars(frameState);
+    expect(groundShadows.count).toBe(1);
     boostPads.updateStates(frameState.boostPadsAvailable, 0.016);
     cameraSuite.update(frameState, 0.016);
 
@@ -523,52 +548,47 @@ describe('Scene Graph & Manager Integrity Verification', () => {
     expect(scene.children.length).toBe(0);
   });
 
-  it('CarManager: dirty-checks nameplate canvas updates to avoid redundant GPU uploads', () => {
+  it('CarManager: does not upload nameplate textures during playback', () => {
     const scene = new THREE.Scene();
     const cars = new CarManager(scene);
     const players = createMockPlayers();
     cars.initCars(players);
 
     const frameState = createMockFrameState();
-    frameState.players[0].boost = 50.2;
-    cars.updateCars(frameState);
-
     const carEntity = (cars as any).carEntities.get(0);
     expect(carEntity).toBeDefined();
-
-    // Mock 2D context to simulate browser environment
-    const mockCtx = {
-      clearRect: () => {},
-      beginPath: () => {},
-      roundRect: () => {},
-      fill: () => {},
-      stroke: () => {},
-      fillText: () => {},
-      fillStyle: '',
-      strokeStyle: '',
-      lineWidth: 0,
-      font: '',
-      textAlign: '',
-    };
-    carEntity.nameplateCanvas.getContext = () => mockCtx;
-
-    // First update with boost 50.2 (rounds to 50)
-    frameState.players[0].boost = 50.2;
-    cars.updateCars(frameState);
-    expect(carEntity.lastDrawnBoost).toBe(50);
     const initialVersion = carEntity.nameplate.material.map.version;
-    expect(initialVersion).toBeGreaterThan(0);
 
-    // Same boost (rounds to 50): should NOT trigger canvas redraw or texture version bump
-    frameState.players[0].boost = 50.4;
+    frameState.players[0].boost = 50.2;
     cars.updateCars(frameState);
     expect(carEntity.nameplate.material.map.version).toBe(initialVersion);
 
-    // Changed boost (rounds to 49): should trigger canvas redraw and texture version bump
     frameState.players[0].boost = 49.1;
     cars.updateCars(frameState);
-    expect(carEntity.lastDrawnBoost).toBe(49);
-    expect(carEntity.nameplate.material.map.version).toBeGreaterThan(initialVersion);
+    expect(carEntity.nameplate.material.map.version).toBe(initialVersion);
+
+    cars.dispose();
+  });
+
+  it('CarManager: hides and restores all in-world nameplates with the HUD', () => {
+    const scene = new THREE.Scene();
+    const cars = new CarManager(scene);
+    const players = createMockPlayers();
+    cars.initCars(players);
+
+    cars.setNameplatesVisible(false);
+    for (const player of players) {
+      const car = cars.getCarObject(player.index);
+      const nameplate = car?.children.find((child) => child instanceof THREE.Sprite);
+      expect(nameplate?.visible).toBe(false);
+    }
+
+    cars.setNameplatesVisible(true);
+    for (const player of players) {
+      const car = cars.getCarObject(player.index);
+      const nameplate = car?.children.find((child) => child instanceof THREE.Sprite);
+      expect(nameplate?.visible).toBe(true);
+    }
 
     cars.dispose();
   });

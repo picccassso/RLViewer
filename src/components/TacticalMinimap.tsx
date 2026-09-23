@@ -41,9 +41,9 @@ export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
     const cornerCutX = 1024 * (drawW / FIELD_WIDTH);
     const cornerCutY = 1088 * (drawH / FIELD_LENGTH);
 
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-    ctx.lineWidth = 1.5;
+    ctx.fillStyle = 'rgba(8, 12, 18, 0.78)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+    ctx.lineWidth = 1;
 
     ctx.beginPath();
     ctx.moveTo(pad + cornerCutX, pad);
@@ -59,7 +59,7 @@ export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
     ctx.stroke();
 
     // 2. Midfield Line & Center Circle
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
     ctx.beginPath();
     ctx.moveTo(pad, h / 2);
     ctx.lineTo(w - pad, h / 2);
@@ -96,7 +96,7 @@ export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
       // Selected pulse ring
       if (isSelected) {
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(px, py, 11, 0, Math.PI * 2);
         ctx.stroke();
@@ -130,8 +130,8 @@ export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
     const bx = toCanvasX(frameState.ball.position.x);
     const by = toCanvasY(frameState.ball.position.z);
 
-    // Ball outer glow
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    // Ball outline
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
     ctx.beginPath();
     ctx.arc(bx, by, 7, 0, Math.PI * 2);
     ctx.fill();
@@ -176,17 +176,17 @@ export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
   };
 
   return (
-    <div className="bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-xl p-2.5 shadow-2xl flex flex-col items-center">
-      <div className="flex items-center justify-between w-full px-1 mb-1.5 text-xs font-semibold text-slate-400">
-        <span className="tracking-wider uppercase font-mono text-[10px]">Tactical Radar</span>
-        <span className="text-[10px] text-cyan-400 font-mono">2D MINIMAP</span>
+    <div className="ui-panel p-2 flex flex-col items-center">
+      <div className="flex items-center justify-between w-full px-1 mb-1 text-slate-500">
+        <span className="tracking-[0.12em] uppercase text-[9px] font-medium">Map</span>
+        <span className="text-[9px] font-mono">click player</span>
       </div>
       <canvas
         ref={canvasRef}
-        width={180}
-        height={225}
+        width={152}
+        height={190}
         onClick={handleClick}
-        className="cursor-pointer rounded-lg hover:border-white/20 transition-colors"
+        className="cursor-pointer"
       />
     </div>
   );

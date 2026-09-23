@@ -33,6 +33,19 @@ export const App: React.FC = () => {
   // only used after the viewer explicitly presses the Ball Cam toggle.
   const [ballCamOverride, setBallCamOverride] = useState<boolean | null>(null);
   const [cameraSettings, setCameraSettings] = useState<CameraSettings>(DEFAULT_CAMERA_SETTINGS);
+  const [isHudVisible, setIsHudVisible] = useState<boolean>(true);
+
+  useEffect(() => {
+    const handleHudShortcut = (event: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((event.target as HTMLElement)?.tagName)) return;
+      if (event.code === 'KeyH') {
+        event.preventDefault();
+        setIsHudVisible((visible) => !visible);
+      }
+    };
+    window.addEventListener('keydown', handleHudShortcut);
+    return () => window.removeEventListener('keydown', handleHudShortcut);
+  }, []);
 
   // 1. Initial Load: Auto-preload sample replay file
   useEffect(() => {
@@ -206,6 +219,7 @@ export const App: React.FC = () => {
         ballCamOverride={ballCamOverride}
         cameraSettings={cameraSettings}
         seekTarget={seekTarget}
+        showHud={isHudVisible}
         onTimeUpdate={handleTimeUpdate}
         onSelectPlayer={handleSelectPlayer}
         onTogglePlay={handleTogglePlay}
@@ -218,87 +232,81 @@ export const App: React.FC = () => {
         loadingMessage={loadingMessage}
         onFileLoaded={handleFileLoaded}
         onLoadSample={handleLoadSample}
+        showControls={isHudVisible}
+        onHideHud={() => setIsHudVisible(false)}
       />
 
-      {/* 3. Top HUD: Scoreboard & Branding */}
-      <div className="absolute top-3 left-4 z-20 pointer-events-none flex items-center gap-3">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold tracking-wider font-display uppercase bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-cyan-300 to-amber-400">
-              Rocket League 3D
-            </span>
-            <span className="text-[10px] font-mono bg-blue-500/20 text-blue-300 border border-blue-400/30 px-1.5 py-0.5 rounded">
-              WASM
-            </span>
+      {isHudVisible && (
+        <>
+          {/* 3. Compact score */}
+          <div className="absolute top-3 inset-x-0 flex justify-center z-20 pointer-events-none">
+            <div className="pointer-events-auto">
+              <Scoreboard
+                frameState={frameState}
+                teamScores={liveTeamScores}
+                blueTeamName="BLUE"
+                orangeTeamName="ORANGE"
+              />
+            </div>
           </div>
-          <span className="text-[10px] font-mono text-slate-400">
-            100% Client-Side Replay Visualizer
-          </span>
-        </div>
-      </div>
 
-      <div className="absolute top-3 inset-x-0 flex justify-center z-20 pointer-events-none">
-        <div className="pointer-events-auto">
-          <Scoreboard
-            frameState={frameState}
-            teamScores={liveTeamScores}
-            blueTeamName="BLUE"
-            orangeTeamName="ORANGE"
-          />
-        </div>
-      </div>
+          <div className="absolute top-3 left-3 z-20 ui-panel px-3 py-2 pointer-events-none">
+            <span className="text-[11px] font-semibold tracking-[0.14em] text-slate-200">RL VIEWER</span>
+          </div>
 
-      {/* 4. Bottom Left: Tactical Radar & Camera Controls */}
-      <div className="absolute bottom-20 left-4 z-20 flex flex-col gap-3 pointer-events-none">
-        <div className="pointer-events-auto flex items-end gap-3">
-          <TacticalMinimap
-            frameState={frameState}
-            activePlayerIndex={activePlayerIndex}
-            onSelectPlayer={handleSelectPlayer}
-          />
-          <CameraToolbar
-            mode={cameraMode}
-            activePlayerIndex={activePlayerIndex}
-            players={replayData?.players || []}
-            cameraSettings={cameraSettings}
-            isBallCam={isBallCam}
-            onSetMode={setCameraMode}
-            onSelectPlayer={handleSelectPlayer}
-            onToggleBallCam={handleToggleBallCam}
-            onUpdateCameraSettings={(patch) =>
-              setCameraSettings((prev) => ({ ...prev, ...patch }))
-            }
-          />
-        </div>
-      </div>
+          {/* 4. Analysis and camera controls */}
+          <div className="absolute bottom-[68px] left-3 z-20 pointer-events-none">
+            <div className="pointer-events-auto flex items-end gap-2">
+              <TacticalMinimap
+                frameState={frameState}
+                activePlayerIndex={activePlayerIndex}
+                onSelectPlayer={handleSelectPlayer}
+              />
+              <CameraToolbar
+                mode={cameraMode}
+                activePlayerIndex={activePlayerIndex}
+                players={replayData?.players || []}
+                cameraSettings={cameraSettings}
+                isBallCam={isBallCam}
+                onSetMode={setCameraMode}
+                onSelectPlayer={handleSelectPlayer}
+                onToggleBallCam={handleToggleBallCam}
+                onUpdateCameraSettings={(patch) =>
+                  setCameraSettings((prev) => ({ ...prev, ...patch }))
+                }
+              />
+            </div>
+          </div>
 
-      {/* 5. Bottom Right: Active Player Telemetry HUD */}
-      <div className="absolute bottom-20 right-4 z-20 pointer-events-none">
-        <PlayerTelemetry
-          frameState={frameState}
-          activePlayerIndex={activePlayerIndex}
-          isBallCam={isBallCam}
-          onToggleBallCam={handleToggleBallCam}
-        />
-      </div>
+          {/* 5. Compact player telemetry */}
+          <div className="absolute bottom-[68px] right-3 z-20 pointer-events-none">
+            <PlayerTelemetry
+              frameState={frameState}
+              activePlayerIndex={activePlayerIndex}
+              isBallCam={isBallCam}
+              onToggleBallCam={handleToggleBallCam}
+            />
+          </div>
 
-      {/* 6. Bottom Playback Timeline & Scrubber */}
-      <div className="absolute bottom-0 inset-x-0 z-20">
-        <PlaybackTimeline
-          currentTime={currentTime}
-          duration={replayData?.duration || 0}
-          currentFrame={currentFrame}
-          totalFrames={replayData?.totalFrames || 0}
-          isPlaying={isPlaying}
-          playbackSpeed={playbackSpeed}
-          tickMarks={replayData?.tickMarks || []}
-          onTogglePlay={handleTogglePlay}
-          onSeekTime={handleSeekTime}
-          onSeekFrame={handleSeekFrame}
-          onChangeSpeed={setPlaybackSpeed}
-          onStepFrame={handleStepFrame}
-        />
-      </div>
+          {/* 6. Playback */}
+          <div className="absolute bottom-0 inset-x-0 z-20">
+            <PlaybackTimeline
+              currentTime={currentTime}
+              duration={replayData?.duration || 0}
+              currentFrame={currentFrame}
+              totalFrames={replayData?.totalFrames || 0}
+              isPlaying={isPlaying}
+              playbackSpeed={playbackSpeed}
+              tickMarks={replayData?.tickMarks || []}
+              onTogglePlay={handleTogglePlay}
+              onSeekTime={handleSeekTime}
+              onSeekFrame={handleSeekFrame}
+              onChangeSpeed={setPlaybackSpeed}
+              onStepFrame={handleStepFrame}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 };

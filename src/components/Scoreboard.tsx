@@ -31,25 +31,25 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
   };
 
   return (
-    <div className="flex items-center select-none shadow-2xl">
+    <div className="ui-panel flex items-stretch select-none overflow-hidden">
       {/* Blue Team Score */}
-      <div className="flex items-center bg-gradient-to-r from-blue-700 to-blue-600 border-y border-l border-blue-400/40 rounded-l-xl px-4 py-2 text-white min-w-[130px] justify-between shadow-[0_0_15px_rgba(0,136,255,0.4)]">
-        <span className="font-bold tracking-wider text-sm md:text-base font-display drop-shadow">
+      <div className="flex items-center border-l-2 border-blue-500 px-3 py-1.5 text-white min-w-[92px] justify-between">
+        <span className="font-medium tracking-wide text-[11px] text-blue-300">
           {blueTeamName}
         </span>
-        <span className="text-2xl md:text-3xl font-bold font-mono ml-3 text-white drop-shadow">
+        <span className="text-xl font-semibold font-mono ml-3 text-white">
           {teamScores.team0}
         </span>
       </div>
 
       {/* Center Clock */}
-      <div className="flex flex-col items-center justify-center bg-slate-950/90 border-y border-white/20 px-5 py-1.5 min-w-[95px] backdrop-blur-md">
-        <span className="text-xs uppercase font-mono tracking-widest text-slate-400 text-[10px]">
+      <div className="flex flex-col items-center justify-center border-x border-white/10 px-4 py-1 min-w-[82px]">
+        <span className="uppercase font-mono tracking-[0.14em] text-slate-500 text-[8px]">
           {isOvertime ? 'OVERTIME' : 'TIME'}
         </span>
         <span
-          className={`text-xl md:text-2xl font-bold font-mono tracking-tight ${
-            isOvertime ? 'text-amber-400 animate-pulse' : 'text-white'
+          className={`text-lg font-semibold font-mono tabular-nums ${
+            isOvertime ? 'text-amber-300' : 'text-white'
           }`}
         >
           {formatClock(secondsRemaining)}
@@ -57,11 +57,11 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
       </div>
 
       {/* Orange Team Score */}
-      <div className="flex items-center bg-gradient-to-r from-orange-600 to-orange-700 border-y border-r border-orange-400/40 rounded-r-xl px-4 py-2 text-white min-w-[130px] justify-between shadow-[0_0_15px_rgba(255,102,0,0.4)]">
-        <span className="text-2xl md:text-3xl font-bold font-mono mr-3 text-white drop-shadow">
+      <div className="flex items-center border-r-2 border-orange-500 px-3 py-1.5 text-white min-w-[92px] justify-between">
+        <span className="text-xl font-semibold font-mono mr-3 text-white">
           {teamScores.team1}
         </span>
-        <span className="font-bold tracking-wider text-sm md:text-base font-display drop-shadow">
+        <span className="font-medium tracking-wide text-[11px] text-orange-300">
           {orangeTeamName}
         </span>
       </div>

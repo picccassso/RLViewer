@@ -6,9 +6,6 @@ import {
   RotateCw,
   ChevronLeft,
   ChevronRight,
-  Shield,
-  Flame,
-  Trophy,
 } from 'lucide-react';
 import { ReplayTickMark } from '../types/replay';
 
@@ -74,19 +71,19 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
   const speeds = [0.25, 0.5, 1.0, 1.5, 2.0];
 
   return (
-    <div className="w-full bg-slate-950/85 backdrop-blur-xl border-t border-white/10 px-4 py-2.5 flex flex-col gap-2 select-none shadow-2xl">
+    <div className="w-full bg-slate-950/95 border-t border-white/10 px-3 py-2 flex flex-col gap-1.5 select-none">
       {/* 1. Scrubber Track & Discrete Event Tick Markers */}
       <div
         ref={progressBarRef}
         onClick={handleSeek}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
-        className="relative w-full h-5 flex items-center cursor-pointer group"
+        className="relative w-full h-3 flex items-center cursor-pointer group"
       >
         {/* Track Background */}
-        <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden group-hover:h-2.5 transition-all">
+        <div className="w-full h-1 bg-white/10 overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-blue-500 via-cyan-400 to-amber-400 rounded-full"
+            className="h-full bg-slate-300"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
@@ -94,7 +91,7 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
         {/* Hover Time Tooltip */}
         {hoverTime !== null && (
           <div
-            className="absolute -top-7 transform -translate-x-1/2 bg-slate-900 border border-white/20 px-2 py-0.5 rounded text-[10px] font-mono text-white pointer-events-none shadow-lg z-20"
+            className="absolute -top-7 transform -translate-x-1/2 ui-panel px-2 py-0.5 text-[10px] font-mono text-white pointer-events-none z-20"
             style={{ left: `${hoverPos}px` }}
           >
             {formatTime(hoverTime)}
@@ -122,23 +119,19 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
                 style={{ left: `${markerPercent}%` }}
               >
                 <div
-                  className={`w-3 h-3 rounded-full flex items-center justify-center transition-transform hover:scale-150 ${
+                  className={`w-0.5 h-3 ${
                     isGoal
-                      ? 'bg-amber-400 text-slate-950 shadow-[0_0_8px_#f59e0b]'
+                      ? 'bg-amber-400'
                       : isSave
-                      ? 'bg-cyan-400 text-slate-950 shadow-[0_0_8px_#06b6d4]'
+                      ? 'bg-cyan-400'
                       : isDemo
-                      ? 'bg-red-500 text-white shadow-[0_0_8px_#ef4444]'
-                      : 'bg-white/60 text-slate-900'
+                      ? 'bg-red-400'
+                      : 'bg-white/50'
                   }`}
-                >
-                  {isGoal && <Trophy size={8} className="stroke-[3]" />}
-                  {isSave && <Shield size={8} className="stroke-[3]" />}
-                  {isDemo && <Flame size={8} className="stroke-[3]" />}
-                </div>
+                />
 
                 {/* Marker Tooltip */}
-                <div className="absolute -top-8 hidden group-hover/marker:flex bg-slate-900/95 border border-white/20 px-2 py-1 rounded text-[10px] font-semibold text-white whitespace-nowrap shadow-xl z-30 flex-col items-center">
+                <div className="absolute -top-8 hidden group-hover/marker:flex ui-panel px-2 py-1 text-[10px] font-medium text-white whitespace-nowrap z-30 flex-col items-center">
                   <span>{tm.description || (isGoal ? 'Goal' : isSave ? 'Save' : 'Demo')}</span>
                   <span className="text-[9px] text-slate-400 font-mono">{formatTime(tm.time)}</span>
                 </div>
@@ -148,7 +141,7 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
 
         {/* Playhead thumb */}
         <div
-          className="absolute w-3.5 h-3.5 bg-white border-2 border-cyan-400 rounded-full shadow-lg transform -translate-x-1/2 pointer-events-none group-hover:scale-125 transition-transform"
+          className="absolute w-1 h-3 bg-white transform -translate-x-1/2 pointer-events-none"
           style={{ left: `${progressPercent}%` }}
         />
       </div>
@@ -160,7 +153,7 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
           {/* Step Back 1s */}
           <button
             onClick={() => onSeekTime(Math.max(0, currentTime - 1.0))}
-            className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+            className="ui-button p-1.5"
             title="Step Back 1s"
           >
             <RotateCcw size={15} />
@@ -169,7 +162,7 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
           {/* Step Back 1 Frame */}
           <button
             onClick={() => onStepFrame(-1)}
-            className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+            className="ui-button p-1.5"
             title="Step Back 1 Frame"
           >
             <ChevronLeft size={16} />
@@ -178,16 +171,16 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
           {/* Play / Pause Primary Button */}
           <button
             onClick={onTogglePlay}
-            className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold flex items-center gap-1.5 shadow-lg shadow-blue-500/25 transition-all active:scale-95"
+            className="ui-button ui-button-active px-3 py-1.5 text-white font-medium flex items-center gap-1.5"
           >
-            {isPlaying ? <Pause size={16} fill="white" /> : <Play size={16} fill="white" />}
-            <span className="font-mono text-xs uppercase">{isPlaying ? 'Pause' : 'Play'}</span>
+            {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+            <span className="text-[10px] uppercase tracking-wide">{isPlaying ? 'Pause' : 'Play'}</span>
           </button>
 
           {/* Step Forward 1 Frame */}
           <button
             onClick={() => onStepFrame(1)}
-            className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+            className="ui-button p-1.5"
             title="Step Forward 1 Frame"
           >
             <ChevronRight size={16} />
@@ -196,7 +189,7 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
           {/* Step Forward 1s */}
           <button
             onClick={() => onSeekTime(Math.min(duration, currentTime + 1.0))}
-            className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+            className="ui-button p-1.5"
             title="Step Forward 1s"
           >
             <RotateCw size={15} />
@@ -205,26 +198,26 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
 
         {/* Center: Match Time & Frame Display */}
         <div className="flex items-center gap-2 font-mono">
-          <span className="text-white font-semibold text-xs md:text-sm">
+          <span className="text-white font-medium text-[11px] tabular-nums">
             {formatTime(currentTime)}
           </span>
           <span className="text-slate-500">/</span>
-          <span className="text-slate-400 text-xs md:text-sm">{formatTime(duration)}</span>
-          <span className="hidden sm:inline-block text-[11px] text-slate-500 ml-2 border-l border-white/10 pl-2">
+          <span className="text-slate-500 text-[11px] tabular-nums">{formatTime(duration)}</span>
+          <span className="hidden sm:inline-block text-[9px] text-slate-600 ml-2 border-l border-white/10 pl-2">
             Frame {currentFrame} / {totalFrames}
           </span>
         </div>
 
         {/* Right: Playback Speed Switcher */}
-        <div className="flex items-center gap-1 bg-slate-900/90 border border-white/10 rounded-lg p-0.5">
+        <div className="flex items-center gap-0.5 border border-white/10 rounded p-0.5">
           {speeds.map((s) => (
             <button
               key={s}
               onClick={() => onChangeSpeed(s)}
-              className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-colors ${
+              className={`px-1.5 py-0.5 rounded-sm text-[9px] font-mono transition-colors ${
                 playbackSpeed === s
-                  ? 'bg-blue-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-white/10 text-white'
+                  : 'text-slate-600 hover:text-white'
               }`}
             >
               {s}x

@@ -51,50 +51,12 @@ export class StadiumManager {
     const hemiLight = new THREE.HemisphereLight(0x60a5fa, 0x064e3b, 0.45);
     this.lightsGroup.add(hemiLight);
 
-    // Main stadium directional light with shadow mapping
+    // Main stadium directional light
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
     dirLight.position.set(2000, 3500, 2000);
-    dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 2048;
-    dirLight.shadow.mapSize.height = 2048;
-    dirLight.shadow.camera.near = 500;
-    dirLight.shadow.camera.far = 8000;
-    const d = 5500;
-    dirLight.shadow.camera.left = -d;
-    dirLight.shadow.camera.right = d;
-    dirLight.shadow.camera.top = d;
-    dirLight.shadow.camera.bottom = -d;
-    dirLight.shadow.bias = -0.0005;
     dirLight.target.position.set(0, 0, 0);
     this.lightsGroup.add(dirLight);
     this.lightsGroup.add(dirLight.target);
-
-    // 4 Stadium floodlights at the corners of the stadium
-    const corners = [
-      { x: -3500, z: -4500, color: 0x93c5fd }, // Blue side
-      { x: 3500, z: -4500, color: 0x93c5fd },  // Blue side
-      { x: -3500, z: 4500, color: 0xfed7aa },  // Orange side
-      { x: 3500, z: 4500, color: 0xfed7aa },   // Orange side
-    ];
-
-    corners.forEach((c) => {
-      const flood = new THREE.SpotLight(c.color, 1.8, 8000, Math.PI / 4, 0.5, 1.2);
-      flood.position.set(c.x, 2200, c.z);
-      flood.target.position.set(c.x * 0.3, 0, c.z * 0.3);
-      this.lightsGroup.add(flood);
-      this.lightsGroup.add(flood.target);
-    });
-
-    // Glowing Goal Lights
-    // Blue Goal Light (at -Z = -5120)
-    const blueGoalLight = new THREE.PointLight(0x0088ff, 2.5, 2000, 1.5);
-    blueGoalLight.position.set(0, GOAL_HEIGHT * 0.6, -FIELD_LENGTH / 2 + 50);
-    this.lightsGroup.add(blueGoalLight);
-
-    // Orange Goal Light (at +Z = +5120)
-    const orangeGoalLight = new THREE.PointLight(0xff6600, 2.5, 2000, 1.5);
-    orangeGoalLight.position.set(0, GOAL_HEIGHT * 0.6, FIELD_LENGTH / 2 - 50);
-    this.lightsGroup.add(orangeGoalLight);
   }
 
   private loadSkybox() {
@@ -364,8 +326,6 @@ export class StadiumManager {
       model.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
-          mesh.receiveShadow = true;
-          mesh.castShadow = true;
 
           // Preserve materials, tune transparency & depth
           if (mesh.material) {
