@@ -1,13 +1,16 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
+  BALL_CAM_VIEW_PITCH_SHARE,
   CameraSettings,
   DEFAULT_CAMERA_SETTINGS,
-  computeHorizonLockedCarCam,
-  computeBallCam,
-  blendCamera,
-  clampCameraInsideArena,
-  rlFovToThreeVerticalFov
+  computeBallCamAim,
+  computeCarCamAim,
+  getSpeedDistanceMultiplier,
+  placeBoomCamera,
+  rlFovToThreeVerticalFov,
+  smoothAim,
+  trackCarHeading
 } from '../math/cameraMath';
 import { FrameState } from '../types/replay';
 
@@ -23,13 +26,13 @@ export class CameraSuite {
 
   private domElement: HTMLElement;
   private ballCamBlend: number = 1.0; // 0 = CarCam, 1 = BallCam
-  private currentCamPos: THREE.Vector3 = new THREE.Vector3(0, 300, -1000);
-  private currentCamQuat: THREE.Quaternion = new THREE.Quaternion();
   private directorCamPos: THREE.Vector3 = new THREE.Vector3(0, 1200, -3500);
-  private ballCamOrbitYaw: number = 0;
-  private hasBallCamOrbitYaw: boolean = false;
-  private carCamHeadingYaw: number = 0;
-  private hasCarCamHeadingYaw: boolean = false;
+  // POV boom rig: a smoothed aim orientation around the car's live position
+  private aim: THREE.Quaternion = new THREE.Quaternion();
+  private carHeading: THREE.Vector3 = new THREE.Vector3(1, 0, 0);
+  private distanceMultiplier: number = 1;
+  private lastCarPos: THREE.Vector3 = new THREE.Vector3();
+  private hasLastCarPos: boolean = false;
   private needsSnap: boolean = true;
 
   constructor(domElement: HTMLElement, aspect: number) {
@@ -48,8 +51,6 @@ export class CameraSuite {
   public setMode(mode: CameraMode) {
     if (this.mode !== mode) {
       this.needsSnap = true;
-      this.hasBallCamOrbitYaw = false;
-      this.hasCarCamHeadingYaw = false;
     }
     this.mode = mode;
     if (mode === 'free') {
@@ -66,8 +67,6 @@ export class CameraSuite {
 
   public setPlayer(playerIndex: number, playerSettings?: CameraSettings) {
     if (this.activePlayerIndex !== playerIndex) {
-      this.hasBallCamOrbitYaw = false;
-      this.hasCarCamHeadingYaw = false;
       this.needsSnap = true;
     }
     this.activePlayerIndex = playerIndex;
@@ -78,8 +77,6 @@ export class CameraSuite {
 
   public snap() {
     this.needsSnap = true;
-    this.hasBallCamOrbitYaw = false;
-    this.hasCarCamHeadingYaw = false;
   }
 
   public toggleBallCam() {
@@ -133,6 +130,8 @@ export class CameraSuite {
     // Mode is 'pov'
     const playerState = frameState.players[this.activePlayerIndex] || frameState.players[0];
     if (!playerState) return;
+    // Hold the last view while the car is demolished; the respawn jump snaps it back.
+    if (!playerState.isPresent || playerState.isDemoed) return;
 
     const carPos = new THREE.Vector3(
       playerState.position.x,
@@ -145,154 +144,69 @@ export class CameraSuite {
       playerState.rotation.z,
       playerState.rotation.w
     );
-    const carVel = new THREE.Vector3(
-      playerState.velocity.x,
-      playerState.velocity.y,
-      playerState.velocity.z
-    );
-    const carSpeed = carVel.length();
+
+    if (this.hasLastCarPos && this.lastCarPos.distanceToSquared(carPos) > 600 * 600) {
+      this.snap();
+    }
+    this.lastCarPos.copy(carPos);
+    this.hasLastCarPos = true;
 
     // Determine target BallCam state (manual override or replay recorded state)
     const targetBallCam = this.ballCamManualOverride !== null
       ? this.ballCamManualOverride
       : playerState.ballCamActive;
 
-    // Smoothstep transition slerp: tau = 0.5 / TransitionSpeed seconds
+    // Linear blend over tau = 0.5 / TransitionSpeed seconds, eased with smoothstep below
     const transSpeed = Math.max(0.2, this.currentSettings.transition_speed || 1.3);
-    const tau = 0.5 / transSpeed;
-    const blendRate = deltaTime / tau;
-
-    if (targetBallCam) {
-      this.ballCamBlend = Math.min(1.0, this.ballCamBlend + blendRate);
-    } else {
-      this.ballCamBlend = Math.max(0.0, this.ballCamBlend - blendRate);
-    }
-
-    // In our Three space: Local +X is Forward, Local +Y is Up, Local +Z is Right
-    const forwardLocal = new THREE.Vector3(1, 0, 0);
-    const upLocal = new THREE.Vector3(0, 1, 0);
-    const carForwardWorld = forwardLocal.clone().applyQuaternion(carQuat);
-    const carUpWorld = upLocal.clone().applyQuaternion(carQuat);
-
-    // Wall detection
-    const isNearWallOrCeiling = Math.abs(carPos.x) > 3700 || Math.abs(carPos.z) > 4800 || carPos.y > 1850;
-    const isWallMounted = isNearWallOrCeiling && (
-      carUpWorld.y < 0.6 || Math.abs(carUpWorld.x) > 0.6 || Math.abs(carUpWorld.z) > 0.6
-    );
-
-    const isFlipping = playerState.dodgeActive || (!isWallMounted && (carUpWorld.y < 0.4 || carForwardWorld.y < -0.4));
-
-    let desiredHeadingYaw: number;
-    const vHorizSq = carVel.x * carVel.x + carVel.z * carVel.z;
-
-    if (isFlipping && vHorizSq > 2500) {
-      // During a dodge/flip, heading follows the horizontal travel direction (velocity)
-      desiredHeadingYaw = Math.atan2(carVel.z, carVel.x);
-    } else {
-      const fHoriz = new THREE.Vector2(carForwardWorld.x, carForwardWorld.z);
-      if (fHoriz.lengthSq() > 1e-4) {
-        desiredHeadingYaw = Math.atan2(carForwardWorld.z, carForwardWorld.x);
-      } else {
-        desiredHeadingYaw = this.carCamHeadingYaw;
-      }
-    }
-
-    if (!this.hasCarCamHeadingYaw || this.needsSnap) {
-      this.carCamHeadingYaw = desiredHeadingYaw;
-      this.hasCarCamHeadingYaw = true;
-    } else {
-      const yawDelta = Math.atan2(
-        Math.sin(desiredHeadingYaw - this.carCamHeadingYaw),
-        Math.cos(desiredHeadingYaw - this.carCamHeadingYaw)
-      );
-      const swivelSpeed = Math.max(1, this.currentSettings.swivel_speed || 4.8);
-      const trackingRate = 8 + swivelSpeed * 3;
-      this.carCamHeadingYaw += yawDelta * (1 - Math.exp(-trackingRate * deltaTime));
-    }
-
-    const stableHeading = new THREE.Vector3(
-      Math.cos(this.carCamHeadingYaw),
-      0,
-      Math.sin(this.carCamHeadingYaw)
-    );
-
-    // Compute Car Cam with Horizon-Locked roll stability
-    const carCam = computeHorizonLockedCarCam(
-      carPos,
-      carQuat,
-      this.currentSettings,
-      carSpeed,
-      carVel,
-      playerState.dodgeActive,
-      stableHeading
-    );
-
-    // Track a persistent orbit around the player. Directly rebuilding this
-    // direction from ball-to-car every frame makes it reverse by 180 degrees
-    // when the ball crosses overhead. Rate-limiting the shortest yaw arc keeps
-    // the player framed while reproducing Rocket League's camera swivel.
-    const ballToCarGround = new THREE.Vector3(
-      carPos.x - ballPos.x,
-      0,
-      carPos.z - ballPos.z
-    );
-    if (ballToCarGround.lengthSq() > 25) {
-      const desiredYaw = Math.atan2(ballToCarGround.z, ballToCarGround.x);
-      if (!this.hasBallCamOrbitYaw) {
-        this.ballCamOrbitYaw = desiredYaw;
-        this.hasBallCamOrbitYaw = true;
-      } else {
-        const yawDelta = Math.atan2(
-          Math.sin(desiredYaw - this.ballCamOrbitYaw),
-          Math.cos(desiredYaw - this.ballCamOrbitYaw)
-        );
-        const swivelSpeed = Math.max(1, this.currentSettings.swivel_speed || 5);
-        const swivelRate = 8 + swivelSpeed * 3;
-        this.ballCamOrbitYaw += yawDelta * (1 - Math.exp(-swivelRate * deltaTime));
-      }
-    }
-    const ballCamOrbitDirection = new THREE.Vector3(
-      Math.cos(this.ballCamOrbitYaw),
-      0,
-      Math.sin(this.ballCamOrbitYaw)
-    );
-
-    // Compute BallCam with Overhead Singularity Clamping (<= 82 deg) and car framing guarantee
-    const ballCam = computeBallCam(
-      carPos,
-      ballPos,
-      this.currentSettings,
-      carSpeed,
-      ballCamOrbitDirection,
-      this.camera.aspect
-    );
-
-    // Slerp blend between Car Cam and Ball Cam
-    const blended = blendCamera(carCam, ballCam, this.ballCamBlend);
-
-    // Apply stiffness interpolation: stiffness 0.0 (loose lag) to 1.0 (rigid lock)
-    const stiffness = Math.min(Math.max(this.currentSettings.stiffness || 0.45, 0), 1);
-    // Exponential damping is stable across 60 Hz, high-refresh displays, and
-    // the occasional long frame; a linear k * dt factor changes the feel with
-    // render cadence and makes dropped frames visible as camera bumps.
-    const posLerpRate = 1 - Math.exp(-(15 + stiffness * 45) * deltaTime);
-    const rotSlerpRate = 1 - Math.exp(-(18 + stiffness * 42) * deltaTime);
-
+    const blendStep = deltaTime / (0.5 / transSpeed);
     if (this.needsSnap) {
-      this.currentCamPos.copy(blended.position);
-      this.currentCamQuat.copy(blended.quaternion);
+      this.ballCamBlend = targetBallCam ? 1 : 0;
+    } else if (targetBallCam) {
+      this.ballCamBlend = Math.min(1.0, this.ballCamBlend + blendStep);
+    } else {
+      this.ballCamBlend = Math.max(0.0, this.ballCamBlend - blendStep);
+    }
+    const ballCamWeight = this.ballCamBlend * this.ballCamBlend * (3 - 2 * this.ballCamBlend);
+
+    const carVel = new THREE.Vector3(playerState.velocity.x, playerState.velocity.y, playerState.velocity.z);
+    const heading = trackCarHeading(this.needsSnap ? undefined : this.carHeading, carPos, carQuat, carVel, deltaTime);
+    this.carHeading.copy(heading);
+
+    const carAim = computeCarCamAim(carPos, carQuat, heading);
+    const ballCam = computeBallCamAim(carPos, ballPos, heading);
+    const targetAim = carAim.clone().slerp(ballCam.aim, ballCamWeight);
+
+    // Car Cam follows the car nearly rigidly. Ball Cam is looser, and slower still
+    // while the ball is close, where its direction swings fastest.
+    const stiffness = Math.min(Math.max(this.currentSettings.stiffness ?? 0.45, 0), 1);
+    const carRate = 12 + 12 * stiffness;
+    const ballRate = 9 * Math.min(Math.max(ballCam.horizontalDistance / 700, 0.25), 1);
+    const rate = carRate + (ballRate - carRate) * ballCamWeight;
+    const maxTurnRate = THREE.MathUtils.degToRad(720 + (300 - 720) * ballCamWeight);
+
+    const speedStretch = getSpeedDistanceMultiplier(carVel.length(), stiffness);
+    if (this.needsSnap) {
+      this.aim.copy(targetAim);
+      this.distanceMultiplier = speedStretch;
       this.needsSnap = false;
     } else {
-      this.currentCamPos.lerp(blended.position, posLerpRate);
-      this.currentCamQuat.slerp(blended.quaternion, rotSlerpRate);
+      smoothAim(this.aim, targetAim, rate, maxTurnRate, deltaTime);
+      this.distanceMultiplier += (speedStretch - this.distanceMultiplier) * (1 - Math.exp(-3 * deltaTime));
     }
 
-    // Ensure camera never penetrates arena perimeter walls, corners, or ceiling
-    const safeCamPos = clampCameraInsideArena(this.currentCamPos, carPos);
-    this.currentCamPos.copy(safeCamPos);
-
-    this.camera.position.copy(this.currentCamPos);
-    this.camera.quaternion.copy(this.currentCamQuat);
+    // On the turf a high ball tilts the view so the camera keeps its height. In the air
+    // the boom swings fully round the car, keeping it locked on screen for aerials.
+    const groundedWeight = 1 - Math.min(Math.max((carPos.y - 60) / 200, 0), 1);
+    const placed = placeBoomCamera(
+      carPos,
+      this.aim,
+      this.currentSettings,
+      this.distanceMultiplier,
+      this.camera.aspect,
+      BALL_CAM_VIEW_PITCH_SHARE * ballCamWeight * groundedWeight
+    );
+    this.camera.position.copy(placed.position);
+    this.camera.quaternion.copy(placed.quaternion);
   }
 
   private updateDirectorCam(frameState: FrameState, ballPos: THREE.Vector3, deltaTime: number) {

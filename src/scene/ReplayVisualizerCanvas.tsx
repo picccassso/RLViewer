@@ -229,7 +229,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
 
     animId = requestAnimationFrame(renderLoop);
     return () => cancelAnimationFrame(animId);
-  }, [replayData, isPlaying, playbackSpeed, onTimeUpdate]);
+  }, [replayData, isPlaying, playbackSpeed, cameraMode, activePlayerIndex, onTimeUpdate]);
 
   // Keyboard Shortcuts
   useEffect(() => {
