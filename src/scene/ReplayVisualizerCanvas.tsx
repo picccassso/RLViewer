@@ -165,7 +165,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
 
     // When paused, immediately unpack and render the target frame for snappy feedback
     if (!isPlaying && replayData) {
-      const { renderer, scene, cameraSuite, boostPads, ball, cars } = managersRef.current;
+      const { renderer, scene, stadium, cameraSuite, boostPads, ball, cars } = managersRef.current;
       const { frameA, frameB, alpha } = getFrameSampleAtTime(replayData, seekTarget.time);
 
       const frameState = unpackFrame(replayData, frameA, frameB, alpha);
@@ -174,6 +174,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       cars.updateCars(frameState, activePov);
       boostPads.updateStates(frameState.boostPadsAvailable, 0.016);
       cameraSuite.update(frameState, 0.016);
+      stadium.setSightline(cameraSuite.camera.position, cameraSuite.followTarget);
       renderer.render(scene, cameraSuite.camera);
 
       onTimeUpdate(seekTarget.time, frameState.frameIndex, frameState);
@@ -188,7 +189,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       animId = requestAnimationFrame(renderLoop);
       if (!managersRef.current || !replayData) return;
 
-      const { renderer, scene, cameraSuite, boostPads, ball, cars } = managersRef.current;
+      const { renderer, scene, stadium, cameraSuite, boostPads, ball, cars } = managersRef.current;
       const delta = Math.min((now - managersRef.current.lastTime) / 1000, 0.1);
       managersRef.current.lastTime = now;
 
@@ -214,6 +215,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
 
       // Update Camera
       cameraSuite.update(frameState, delta);
+      stadium.setSightline(cameraSuite.camera.position, cameraSuite.followTarget);
 
       // Render
       renderer.render(scene, cameraSuite.camera);

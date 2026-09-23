@@ -29,11 +29,15 @@ export const MIN_BALL_ELEVATION_RAD = (-55 * Math.PI) / 180;
 /** Lowest camera height above the turf, so the boom never scrapes the floor. */
 export const CAMERA_MIN_HEIGHT = 30;
 
-/** Shortest boom, as a fraction of its length, before the camera slides along a wall. */
-export const MIN_BOOM_FRACTION = 0.4;
-
 /** Share of Ball Cam's upward aim taken by tilting the view rather than the boom, on the turf. */
 export const BALL_CAM_VIEW_PITCH_SHARE = 0.5;
+
+/**
+ * The same share in the air. Enough that an air dribble or a ball just above the car
+ * keeps the camera level with the car instead of swinging underneath it, while leaving
+ * the car close to its usual spot on screen.
+ */
+export const BALL_CAM_AIR_VIEW_PITCH_SHARE = 0.35;
 
 /** The followed car is kept within this fraction of the half-FOV. */
 export const CAR_FRAMING_LIMIT_NDC = 0.8;
@@ -71,67 +75,6 @@ export function getSpeedDistanceMultiplier(speedUu: number, stiffness: number = 
   const ratio = Math.min(Math.max(speedUu / SUPERSONIC_SPEED_THRESHOLD, 0), 1);
   const looseness = 1 - Math.min(Math.max(stiffness, 0), 1);
   return 1.0 + 0.25 * looseness * ratio;
-}
-
-/**
- * Clamps a camera position inside the Rocket League arena with safety padding.
- * - Half width (X): 4096 uu -> [-4030, +4030]
- * - Half length (Z): 5120 uu -> [-5050, +5050] (up to +/-5800 inside the goal mouth)
- * - Ceiling (Y): 2044 uu -> 1980, floor -> 20
- * - 45 degree corner cuts: |X| + |Z| <= 7950
- *
- * The camera is pulled in along the ray towards `pivot` (the followed car), so the
- * car keeps the same screen position. Once the boom would drop below
- * `minBoomFraction` of its length, the camera slides along the surface instead.
- */
-export function clampCameraInsideArena(
-  desiredPosition: THREE.Vector3,
-  pivot: THREE.Vector3,
-  minBoomFraction: number = 0
-): THREE.Vector3 {
-  const maxX = 4030;
-  const maxY = 1980;
-  const minY = 20;
-  const maxCorner = 7950;
-  const isInsideGoalMouth = Math.abs(desiredPosition.x) < 850 && desiredPosition.y < 600;
-  const maxZ = isInsideGoalMouth ? 5800 : 5050;
-
-  // Half-space constraints of the form n . p <= c.
-  const constraints: Array<[number, number, number, number]> = [
-    [1, 0, 0, maxX], [-1, 0, 0, maxX],
-    [0, 0, 1, maxZ], [0, 0, -1, maxZ],
-    [0, 1, 0, maxY],
-    [1, 0, 1, maxCorner], [1, 0, -1, maxCorner], [-1, 0, 1, maxCorner], [-1, 0, -1, maxCorner],
-  ];
-
-  const toCam = desiredPosition.clone().sub(pivot);
-  let t = 1;
-  for (const [nx, ny, nz, c] of constraints) {
-    const along = nx * toCam.x + ny * toCam.y + nz * toCam.z;
-    const pivotSide = nx * pivot.x + ny * pivot.y + nz * pivot.z;
-    const desiredSide = pivotSide + along;
-    // A pivot already outside a plane (car inside the goal, etc.) is left to the hard clamp.
-    if (desiredSide > c && along > 1e-4 && pivotSide <= c) {
-      t = Math.min(t, (c - pivotSide) / along);
-    }
-  }
-
-  // Below the minimum boom length the camera slides along the surface instead
-  // (the hard clamp below projects it onto the violated planes).
-  const result = pivot.clone().add(toCam.multiplyScalar(Math.max(minBoomFraction, t, 0)));
-
-  // Hard safety clamp as an absolute guarantee.
-  result.x = Math.max(-maxX, Math.min(maxX, result.x));
-  result.y = Math.max(minY, Math.min(maxY, result.y));
-  result.z = Math.max(-maxZ, Math.min(maxZ, result.z));
-  const cornerSum = Math.abs(result.x) + Math.abs(result.z);
-  if (cornerSum > maxCorner) {
-    const excess = (cornerSum - maxCorner) / 2;
-    result.x -= Math.sign(result.x) * excess;
-    result.z -= Math.sign(result.z) * excess;
-  }
-
-  return result;
 }
 
 /**
@@ -292,8 +235,12 @@ export function computeBallCamAim(
  * and looks along the aim tilted by `angle`. Because the camera is derived from the
  * car's current position, the car holds a fixed screen position however the aim is
  * smoothed. `viewPitchShare` of an upward aim tilts the view instead of the boom,
- * lowering the car on screen. The boom also departs from the aim to stay above the
- * turf and inside the arena, and the view turns just enough to keep the car on screen.
+ * lowering the car on screen. The boom swings up to stay above the turf, and the view
+ * turns just enough to keep the car on screen.
+ *
+ * Like Rocket League, the boom never shortens against the arena: the camera passes
+ * through walls and the ceiling (which are see-through from outside), so the car keeps
+ * a constant size on screen in corners and along walls.
  */
 export function placeBoomCamera(
   pivot: THREE.Vector3,
@@ -329,13 +276,13 @@ export function placeBoomCamera(
     offset.applyAxisAngle(right, -high);
   }
 
-  const position = clampCameraInsideArena(pivot.clone().add(offset), pivot, MIN_BOOM_FRACTION);
+  const position = pivot.clone().add(offset);
   const quaternion = aim.clone().multiply(
     new THREE.Quaternion().setFromAxisAngle(AXIS_X, (settings.angle * Math.PI) / 180)
   );
 
-  // Framing guarantee: when a wall or the turf pushes the camera off the boom, turn the
-  // view just enough to keep the car inside the frame limits.
+  // Framing guarantee: when the turf swings the camera off the aim, turn the view just
+  // enough to keep the car inside the frame limits.
   const tanHalfV = Math.tan((rlFovToThreeVerticalFov(settings.fov, aspect) * Math.PI) / 360);
   const yawLimitRad = Math.atan(CAR_FRAMING_LIMIT_NDC * tanHalfV * aspect);
   const pitchLimitRad = Math.atan(CAR_FRAMING_LIMIT_NDC * tanHalfV);

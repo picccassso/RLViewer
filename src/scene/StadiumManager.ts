@@ -11,6 +11,14 @@ export const GOAL_WIDTH = 1785.51;
 export const GOAL_HEIGHT = 642.775;
 export const GOAL_DEPTH = 880;
 
+/** Radius of the see-through cone around the followed car, in uu. */
+const SIGHTLINE_CAR_RADIUS = 110;
+/** Trim this close to the car centre is never cut away, so the surface it drives on stays. */
+const SIGHTLINE_CAR_CLEARANCE = 70;
+
+/** Glass walls and hexagon overlays are already see-through; they are left alone. */
+const SEE_THROUGH_MATERIAL = /^(Vitre|Hexagone_T[01])$/i;
+
 export class StadiumManager {
   private scene: THREE.Scene;
   private gltfLoader: GLTFLoader;
@@ -19,6 +27,12 @@ export class StadiumManager {
   private proceduralFieldGroup: THREE.Group;
   private lightsGroup: THREE.Group;
   private isDisposed: boolean = false;
+  // Shared by every stadium trim material: the camera-to-car sightline to keep clear.
+  private sightlineUniforms = {
+    uSightFrom: { value: new THREE.Vector3() },
+    uSightTo: { value: new THREE.Vector3() },
+    uSightActive: { value: 0 },
+  };
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -323,6 +337,8 @@ export class StadiumManager {
       if (this.isDisposed) return;
       const model = gltf.scene;
 
+      model.updateMatrixWorld(true);
+      const sightlineMaterials = new Map<THREE.Material, THREE.Material>();
       model.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
@@ -336,6 +352,20 @@ export class StadiumManager {
               mat.depthWrite = false;
             }
           }
+
+          // The POV camera passes through the arena walls like in Rocket League, so
+          // trim outside the pitch (ad boards, rails, gutters) must not hide the car.
+          // Flat floor pieces are skipped: the car may be sitting on them.
+          const mat = mesh.material as THREE.Material;
+          const height = new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).y;
+          if (!Array.isArray(mesh.material) && height >= 20 && !SEE_THROUGH_MATERIAL.test(mat.name)) {
+            let patched = sightlineMaterials.get(mat);
+            if (!patched) {
+              patched = this.withSightlineCutout(mat);
+              sightlineMaterials.set(mat, patched);
+            }
+            mesh.material = patched;
+          }
         }
       });
 
@@ -348,6 +378,61 @@ export class StadiumManager {
       console.warn('[StadiumManager] GLB stadium load error (falling back to high-detail procedural):', err);
       this.proceduralFieldGroup.visible = true;
     }
+  }
+
+  /**
+   * Keeps the line of sight from `from` (the camera) to `to` (the followed car) clear of
+   * stadium trim. Pass a null target to disable.
+   */
+  public setSightline(from: THREE.Vector3, to: THREE.Vector3 | null) {
+    this.sightlineUniforms.uSightActive.value = to ? 1 : 0;
+    if (!to) return;
+    this.sightlineUniforms.uSightFrom.value.copy(from);
+    this.sightlineUniforms.uSightTo.value.copy(to);
+  }
+
+  /**
+   * Copy of `material` that dithers away fragments inside a cone from the camera to the
+   * followed car, stopping just short of the car.
+   */
+  private withSightlineCutout(material: THREE.Material): THREE.Material {
+    const patched = material.clone();
+    patched.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, this.sightlineUniforms);
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vSightWorldPos;')
+        .replace(
+          '#include <project_vertex>',
+          '#include <project_vertex>\nvSightWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;'
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+varying vec3 vSightWorldPos;
+uniform vec3 uSightFrom;
+uniform vec3 uSightTo;
+uniform float uSightActive;`
+        )
+        .replace(
+          '#include <clipping_planes_fragment>',
+          `#include <clipping_planes_fragment>
+if (uSightActive > 0.5) {
+  vec3 sight = uSightTo - uSightFrom;
+  float sightLength = max(length(sight), 1.0);
+  float along = dot(vSightWorldPos - uSightFrom, sight) / (sightLength * sightLength);
+  float radius = ${SIGHTLINE_CAR_RADIUS.toFixed(1)} * clamp(along, 0.0, 1.0);
+  float offAxis = length(vSightWorldPos - (uSightFrom + sight * along));
+  float cutoff = 1.0 - ${SIGHTLINE_CAR_CLEARANCE.toFixed(1)} / sightLength;
+  float cut = (1.0 - smoothstep(radius * 0.6, radius, offAxis))
+    * step(0.0, along) * (1.0 - smoothstep(cutoff - 0.1, cutoff, along));
+  // Screen-door dither keeps the cut-out sorted correctly without transparency.
+  float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  if (cut * 0.9 > noise) discard;
+}`
+        );
+    };
+    return patched;
   }
 
   public dispose() {

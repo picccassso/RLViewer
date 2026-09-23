@@ -1,18 +1,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
-  BALL_CAM_VIEW_PITCH_SHARE,
   CameraSettings,
   DEFAULT_CAMERA_SETTINGS,
-  computeBallCamAim,
-  computeCarCamAim,
-  getSpeedDistanceMultiplier,
-  placeBoomCamera,
-  rlFovToThreeVerticalFov,
-  smoothAim,
-  trackCarHeading
+  rlFovToThreeVerticalFov
 } from '../math/cameraMath';
 import { FrameState } from '../types/replay';
+import { PovCameraRig } from './PovCameraRig';
 
 export type CameraMode = 'pov' | 'director' | 'free' | 'tactical';
 
@@ -23,17 +17,12 @@ export class CameraSuite {
   public activePlayerIndex: number = 0;
   public ballCamManualOverride: boolean | null = null; // null = use recorded state, true/false = manual override
   public currentSettings: CameraSettings = { ...DEFAULT_CAMERA_SETTINGS };
+  /** Car the POV camera is following, or null in the other modes. */
+  public followTarget: THREE.Vector3 | null = null;
 
   private domElement: HTMLElement;
-  private ballCamBlend: number = 1.0; // 0 = CarCam, 1 = BallCam
   private directorCamPos: THREE.Vector3 = new THREE.Vector3(0, 1200, -3500);
-  // POV boom rig: a smoothed aim orientation around the car's live position
-  private aim: THREE.Quaternion = new THREE.Quaternion();
-  private carHeading: THREE.Vector3 = new THREE.Vector3(1, 0, 0);
-  private distanceMultiplier: number = 1;
-  private lastCarPos: THREE.Vector3 = new THREE.Vector3();
-  private hasLastCarPos: boolean = false;
-  private needsSnap: boolean = true;
+  private pov: PovCameraRig = new PovCameraRig();
 
   constructor(domElement: HTMLElement, aspect: number) {
     this.domElement = domElement;
@@ -50,7 +39,7 @@ export class CameraSuite {
 
   public setMode(mode: CameraMode) {
     if (this.mode !== mode) {
-      this.needsSnap = true;
+      this.pov.snap();
     }
     this.mode = mode;
     if (mode === 'free') {
@@ -67,7 +56,7 @@ export class CameraSuite {
 
   public setPlayer(playerIndex: number, playerSettings?: CameraSettings) {
     if (this.activePlayerIndex !== playerIndex) {
-      this.needsSnap = true;
+      this.pov.snap();
     }
     this.activePlayerIndex = playerIndex;
     if (playerSettings) {
@@ -76,7 +65,7 @@ export class CameraSuite {
   }
 
   public snap() {
-    this.needsSnap = true;
+    this.pov.snap();
   }
 
   public toggleBallCam() {
@@ -104,6 +93,8 @@ export class CameraSuite {
   }
 
   public update(frameState: FrameState, deltaTime: number = 0.016) {
+    if (this.mode !== 'pov') this.followTarget = null;
+
     if (this.mode === 'free') {
       this.controls.update();
       return;
@@ -128,85 +119,18 @@ export class CameraSuite {
     }
 
     // Mode is 'pov'
-    const playerState = frameState.players[this.activePlayerIndex] || frameState.players[0];
-    if (!playerState) return;
-    // Hold the last view while the car is demolished; the respawn jump snaps it back.
-    if (!playerState.isPresent || playerState.isDemoed) return;
-
-    const carPos = new THREE.Vector3(
-      playerState.position.x,
-      playerState.position.y,
-      playerState.position.z
-    );
-    const carQuat = new THREE.Quaternion(
-      playerState.rotation.x,
-      playerState.rotation.y,
-      playerState.rotation.z,
-      playerState.rotation.w
-    );
-
-    if (this.hasLastCarPos && this.lastCarPos.distanceToSquared(carPos) > 600 * 600) {
-      this.snap();
-    }
-    this.lastCarPos.copy(carPos);
-    this.hasLastCarPos = true;
-
-    // Determine target BallCam state (manual override or replay recorded state)
-    const targetBallCam = this.ballCamManualOverride !== null
-      ? this.ballCamManualOverride
-      : playerState.ballCamActive;
-
-    // Linear blend over tau = 0.5 / TransitionSpeed seconds, eased with smoothstep below
-    const transSpeed = Math.max(0.2, this.currentSettings.transition_speed || 1.3);
-    const blendStep = deltaTime / (0.5 / transSpeed);
-    if (this.needsSnap) {
-      this.ballCamBlend = targetBallCam ? 1 : 0;
-    } else if (targetBallCam) {
-      this.ballCamBlend = Math.min(1.0, this.ballCamBlend + blendStep);
-    } else {
-      this.ballCamBlend = Math.max(0.0, this.ballCamBlend - blendStep);
-    }
-    const ballCamWeight = this.ballCamBlend * this.ballCamBlend * (3 - 2 * this.ballCamBlend);
-
-    const carVel = new THREE.Vector3(playerState.velocity.x, playerState.velocity.y, playerState.velocity.z);
-    const heading = trackCarHeading(this.needsSnap ? undefined : this.carHeading, carPos, carQuat, carVel, deltaTime);
-    this.carHeading.copy(heading);
-
-    const carAim = computeCarCamAim(carPos, carQuat, heading);
-    const ballCam = computeBallCamAim(carPos, ballPos, heading);
-    const targetAim = carAim.clone().slerp(ballCam.aim, ballCamWeight);
-
-    // Car Cam follows the car nearly rigidly. Ball Cam is looser, and slower still
-    // while the ball is close, where its direction swings fastest.
-    const stiffness = Math.min(Math.max(this.currentSettings.stiffness ?? 0.45, 0), 1);
-    const carRate = 12 + 12 * stiffness;
-    const ballRate = 9 * Math.min(Math.max(ballCam.horizontalDistance / 700, 0.25), 1);
-    const rate = carRate + (ballRate - carRate) * ballCamWeight;
-    const maxTurnRate = THREE.MathUtils.degToRad(720 + (300 - 720) * ballCamWeight);
-
-    const speedStretch = getSpeedDistanceMultiplier(carVel.length(), stiffness);
-    if (this.needsSnap) {
-      this.aim.copy(targetAim);
-      this.distanceMultiplier = speedStretch;
-      this.needsSnap = false;
-    } else {
-      smoothAim(this.aim, targetAim, rate, maxTurnRate, deltaTime);
-      this.distanceMultiplier += (speedStretch - this.distanceMultiplier) * (1 - Math.exp(-3 * deltaTime));
-    }
-
-    // On the turf a high ball tilts the view so the camera keeps its height. In the air
-    // the boom swings fully round the car, keeping it locked on screen for aerials.
-    const groundedWeight = 1 - Math.min(Math.max((carPos.y - 60) / 200, 0), 1);
-    const placed = placeBoomCamera(
-      carPos,
-      this.aim,
+    const pose = this.pov.update(
+      frameState,
+      this.activePlayerIndex,
       this.currentSettings,
-      this.distanceMultiplier,
       this.camera.aspect,
-      BALL_CAM_VIEW_PITCH_SHARE * ballCamWeight * groundedWeight
+      this.ballCamManualOverride,
+      deltaTime
     );
-    this.camera.position.copy(placed.position);
-    this.camera.quaternion.copy(placed.quaternion);
+    this.followTarget = this.pov.followTarget;
+    if (!pose) return;
+    this.camera.position.copy(pose.position);
+    this.camera.quaternion.copy(pose.quaternion);
   }
 
   private updateDirectorCam(frameState: FrameState, ballPos: THREE.Vector3, deltaTime: number) {
