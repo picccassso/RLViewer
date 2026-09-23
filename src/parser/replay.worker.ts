@@ -2,7 +2,6 @@ import initSubtr, { get_replay_frames_data } from '@rlrml/subtr-actor';
 import {
   PlayerInfo,
   ReplayBoostPad,
-  ReplayTickMark,
   TOTAL_FLOATS_PER_FRAME,
   FLOATS_PER_BALL,
   FLOATS_PER_PLAYER,
@@ -11,6 +10,7 @@ import {
 import { rlToThreeVec3, rlToThreeQuat } from '../math/coords';
 import { BOOST_PAD_RESPAWN_TIME, BoostPadClockManager } from '../math/boostPadClock';
 import { smoothReplayPositions } from '../math/motionSmoothing';
+import { buildTickMarks, readFinalScore } from './tickMarks';
 
 import wasmUrl from '@rlrml/subtr-actor/rl_replay_subtr_actor_bg.wasm?url';
 
@@ -170,45 +170,20 @@ self.onmessage = async (e: MessageEvent) => {
       ballCamTimelineByPlayer.push(pTimeline);
     }
 
-    // Replay Tick Marks & Events (Goals, Saves, Demolishes)
-    const tickMarks: ReplayTickMark[] = [];
-    const rawTickMarks = rawData.replay_tick_marks ?? [];
-    for (const tm of rawTickMarks) {
-      let type: ReplayTickMark['type'] = 'user';
-      let team: 0 | 1 = 0;
-      const desc = tm.description || '';
-      if (desc.includes('Goal')) {
-        type = 'goal';
-        team = desc.includes('Team1') ? 1 : 0;
-      } else if (desc.includes('Save')) {
-        type = 'save';
-        team = desc.includes('Team1') ? 1 : 0;
-      } else if (desc.includes('Demolish')) {
-        type = 'demolish';
-      }
-      tickMarks.push({
-        frame: tm.frame,
-        time: tm.time,
-        type,
-        team,
-        description: desc
-      });
-    }
+    // Playback clock: seconds since the first recorded frame
+    const baseTime = metadataFrames[0]?.time ?? 0;
+    const playbackTimeAtFrame = (frame: number): number => {
+      const metaF = metadataFrames[Math.min(Math.max(0, Math.floor(frame)), totalFrames - 1)];
+      return metaF ? metaF.time - baseTime : frame / 30;
+    };
 
-    // Add Goal events explicitly if not in tick marks
-    const rawGoals = rawData.goal_events ?? [];
-    for (const g of rawGoals) {
-      const team = g.scoring_team_is_team_0 ? 0 : 1;
-      const scorerMatch = findMetaPlayer(g.player);
-      tickMarks.push({
-        frame: g.frame,
-        time: g.time,
-        type: 'goal',
-        team,
-        description: `Goal by ${scorerMatch?.meta?.name || (team === 0 ? 'Blue' : 'Orange')}`,
-        scorerName: scorerMatch?.meta?.name
-      });
-    }
+    // Replay Tick Marks & Events (Goals, Saves, Demolishes)
+    const tickMarks = buildTickMarks(
+      rawData.replay_tick_marks ?? [],
+      rawData.goal_events ?? [],
+      playbackTimeAtFrame,
+      (player) => findMetaPlayer(player)?.meta?.name
+    );
 
     // Boost Pad Clock Manager for bitmasks
     const padClock = new BoostPadClockManager(
@@ -225,12 +200,10 @@ self.onmessage = async (e: MessageEvent) => {
     const framesBuffer = new Float32Array(totalFrames * TOTAL_FLOATS_PER_FRAME);
     const ballHasTransform = new Uint8Array(totalFrames);
     const uint32View = new Uint32Array(framesBuffer.buffer);
-    const baseTime = metadataFrames[0]?.time ?? 0;
-
     for (let f = 0; f < totalFrames; f++) {
       const frameOffset = f * TOTAL_FLOATS_PER_FRAME;
       const metaF = metadataFrames[f];
-      const matchTime = metaF ? metaF.time - baseTime : f / 30;
+      const matchTime = playbackTimeAtFrame(f);
       const secRemaining = metaF?.seconds_remaining ?? 300;
 
       // 1. Ball (10 floats)
@@ -356,10 +329,7 @@ self.onmessage = async (e: MessageEvent) => {
     const frameRate = totalFrames > 1 && duration > 0 ? totalFrames / duration : 30;
 
     // Team scores
-    const finalScores = {
-      team0: meta?.team_zero_score ?? (rawGoals.filter((g: any) => g.scoring_team_is_team_0).length),
-      team1: meta?.team_one_score ?? (rawGoals.filter((g: any) => !g.scoring_team_is_team_0).length),
-    };
+    const finalScores = readFinalScore(meta?.all_headers, tickMarks);
 
     // Post message with transferable ArrayBuffer for zero-copy transfer!
     self.postMessage(
