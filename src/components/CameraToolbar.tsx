@@ -166,14 +166,89 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
 
       {/* 3. Camera Settings Sliders Popover */}
       {showSettingsModal && (
-        <div className="ui-panel p-3 w-72 flex flex-col gap-3 text-xs text-white">
+        <div className="ui-panel p-3 w-80 flex flex-col gap-3 text-xs text-white max-h-[80vh] overflow-y-auto">
           <div className="flex items-center justify-between border-b border-white/10 pb-2">
             <span className="font-medium uppercase tracking-wider text-slate-300 text-[10px]">
-              Camera Settings
+              Camera Profile Settings
             </span>
             <span className="text-[10px] text-slate-400 font-mono">
               Live Profile
             </span>
+          </div>
+
+          {/* Quick Presets */}
+          <div className="flex flex-col gap-1.5 pb-2 border-b border-white/10">
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+              Presets
+            </span>
+            <div className="grid grid-cols-4 gap-1">
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateCameraSettings({
+                    fov: 110,
+                    distance: 270,
+                    height: 100,
+                    angle: -3,
+                    stiffness: 0.45,
+                    swivel_speed: 5.0,
+                    transition_speed: 1.3,
+                  })
+                }
+                className="px-1.5 py-1 rounded bg-white/5 hover:bg-white/15 text-[10px] text-slate-200 transition-colors text-center"
+                title="Standard Rocket League Default Settings"
+              >
+                Default
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateCameraSettings({
+                    fov: 110,
+                    distance: 270,
+                    height: 90,
+                    angle: -3,
+                    stiffness: 0.4,
+                    swivel_speed: 4.5,
+                    transition_speed: 1.2,
+                  })
+                }
+                className="px-1.5 py-1 rounded bg-white/5 hover:bg-white/15 text-[10px] text-slate-200 transition-colors text-center"
+                title="Zen's Competitive Profile"
+              >
+                Zen
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateCameraSettings({
+                    fov: 110,
+                    distance: 260,
+                    height: 90,
+                    angle: -4,
+                    stiffness: 0.55,
+                    swivel_speed: 5.0,
+                    transition_speed: 1.3,
+                  })
+                }
+                className="px-1.5 py-1 rounded bg-white/5 hover:bg-white/15 text-[10px] text-slate-200 transition-colors text-center"
+                title="Vatira's Competitive Profile"
+              >
+                Vatira
+              </button>
+              {players[activePlayerIndex] && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onUpdateCameraSettings(players[activePlayerIndex].camera_settings)
+                  }
+                  className="px-1.5 py-1 rounded bg-blue-500/20 hover:bg-blue-500/30 text-blue-200 text-[10px] transition-colors text-center font-medium"
+                  title="Reset to selected player recorded settings"
+                >
+                  Player
+                </button>
+              )}
+            </div>
           </div>
 
           {/* FOV */}
@@ -184,7 +259,7 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
             </div>
             <input
               type="range"
-              min="90"
+              min="80"
               max="110"
               value={cameraSettings.fov}
               onChange={(e) => onUpdateCameraSettings({ fov: Number(e.target.value) })}
@@ -200,8 +275,9 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
             </div>
             <input
               type="range"
-              min="150"
+              min="100"
               max="400"
+              step="5"
               value={cameraSettings.distance}
               onChange={(e) => onUpdateCameraSettings({ distance: Number(e.target.value) })}
               className="accent-blue-500 w-full"
@@ -218,6 +294,7 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
               type="range"
               min="40"
               max="200"
+              step="5"
               value={cameraSettings.height}
               onChange={(e) => onUpdateCameraSettings({ height: Number(e.target.value) })}
               className="accent-blue-500 w-full"
@@ -234,6 +311,7 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
               type="range"
               min="-15"
               max="0"
+              step="1"
               value={cameraSettings.angle}
               onChange={(e) => onUpdateCameraSettings({ angle: Number(e.target.value) })}
               className="accent-blue-500 w-full"
@@ -244,7 +322,7 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
           <div className="flex flex-col gap-1">
             <div className="flex justify-between font-mono text-[11px]">
               <span className="text-slate-400">Stiffness</span>
-              <span>{(cameraSettings.stiffness || 0.45).toFixed(2)}</span>
+              <span>{(cameraSettings.stiffness ?? 0.45).toFixed(2)}</span>
             </div>
             <input
               type="range"
@@ -257,11 +335,30 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
             />
           </div>
 
+          {/* Swivel Speed */}
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between font-mono text-[11px]">
+              <span className="text-slate-400">Swivel Speed</span>
+              <span>{(cameraSettings.swivel_speed ?? 5.0).toFixed(1)}</span>
+            </div>
+            <input
+              type="range"
+              min="1.0"
+              max="10.0"
+              step="0.2"
+              value={cameraSettings.swivel_speed ?? 5.0}
+              onChange={(e) =>
+                onUpdateCameraSettings({ swivel_speed: Number(e.target.value) })
+              }
+              className="accent-blue-500 w-full"
+            />
+          </div>
+
           {/* Transition Speed */}
           <div className="flex flex-col gap-1">
             <div className="flex justify-between font-mono text-[11px]">
               <span className="text-slate-400">Transition Speed</span>
-              <span>{(cameraSettings.transition_speed || 1.3).toFixed(1)}</span>
+              <span>{(cameraSettings.transition_speed ?? 1.3).toFixed(1)}</span>
             </div>
             <input
               type="range"

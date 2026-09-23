@@ -311,7 +311,7 @@ export class CarManager {
     return cached.clone(true);
   }
 
-  public updateCars(frameState: FrameState) {
+  public updateCars(frameState: FrameState, activePovPlayerIndex: number | null = null) {
     let shadowCount = 0;
     for (const playerState of frameState.players) {
       const entity = this.carEntities.get(playerState.info.index);
@@ -322,6 +322,10 @@ export class CarManager {
       // Visibility: hidden if absent or demoed
       entity.group.visible = isPresent && !isDemoed;
       if (!entity.group.visible) continue;
+
+      // Hide nameplate for the followed POV player so it doesn't obstruct camera view
+      const isPovTarget = activePovPlayerIndex !== null && playerState.info.index === activePovPlayerIndex;
+      entity.nameplate.visible = this.nameplatesVisible && !isPovTarget;
 
       // Position and Rotation
       entity.group.position.set(position.x, position.y, position.z);

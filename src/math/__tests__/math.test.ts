@@ -11,8 +11,10 @@ import {
 import {
   computeHorizonLockedCarCam,
   computeBallCam,
+  clampCameraInsideArena,
   DEFAULT_CAMERA_SETTINGS,
-  MAX_BALL_ELEVATION_RAD
+  MAX_BALL_ELEVATION_RAD,
+  rlFovToThreeVerticalFov
 } from '../cameraMath';
 import {
   BoostPadClockManager,
@@ -128,6 +130,73 @@ describe('2. Camera Horizon Stability on Car Roll', () => {
     expect(angleDeg).toBeLessThanOrEqual(1.0);
   });
 
+  it('keeps camera height, pitch, and roll completely stable during a front flip', () => {
+    const carPos = new THREE.Vector3(0, 60, 0);
+    const carVel = new THREE.Vector3(1500, 0, 0); // Moving forward along +X
+    const worldUp = new THREE.Vector3(0, 1, 0);
+
+    // In Three space, forward is +X, up is +Y, right is +Z.
+    // Pitching down 90 degrees (nose pointing straight down into turf)
+    const pitchDownQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
+
+    const { cameraPosition, cameraUp, lookTarget } = computeHorizonLockedCarCam(
+      carPos,
+      pitchDownQuat,
+      { ...DEFAULT_CAMERA_SETTINGS, height: 110, distance: 280, angle: -3 },
+      1500,
+      carVel,
+      true // isDodgeActive
+    );
+
+    // Camera height must remain anchored strictly to carPos.y + settings.height (60 + 110 = 170)
+    expect(cameraPosition.y).toBe(170);
+
+    // Camera Up must match the configured pitch angle (3 deg tilt from World Up) with zero roll
+    const angleDeg = (cameraUp.angleTo(worldUp) * 180) / Math.PI;
+    expect(angleDeg).toBeCloseTo(3.0, 1);
+
+    // Camera must stay BEHIND the car along its travel direction (-X)
+    expect(cameraPosition.x).toBeLessThan(carPos.x);
+
+    // Camera pitch must not dive straight down into the floor; lookTarget.y should reflect -3 deg
+    expect(lookTarget.y).toBeLessThan(cameraPosition.y);
+    expect(lookTarget.y).toBeGreaterThan(cameraPosition.y - 30); // Not pointing straight down
+  });
+
+  it('keeps camera heading aligned with forward travel direction during a speedflip', () => {
+    // In a speedflip, the car travels diagonally down the field while tumbling diagonally
+    const carPos = new THREE.Vector3(100, 75, 300);
+    const carVel = new THREE.Vector3(800, 0, 2000); // Kickoff diagonal velocity
+    const travelDir = new THREE.Vector3(800, 0, 2000).normalize();
+
+    // Tumbling diagonal rotation (upside down and pitched)
+    const tumbleQuat = new THREE.Quaternion(0.765, -0.378, -0.383, 0.352).normalize();
+
+    const { cameraPosition, cameraUp } = computeHorizonLockedCarCam(
+      carPos,
+      tumbleQuat,
+      { ...DEFAULT_CAMERA_SETTINGS, height: 110, distance: 280, angle: -3 },
+      2154,
+      carVel,
+      true
+    );
+
+    // Camera height must remain at car height + settings.height
+    expect(cameraPosition.y).toBe(75 + 110);
+
+    // Camera Up must remain upright
+    expect(cameraUp.y).toBeGreaterThan(0.99);
+
+    // The camera position offset from the car must be directly opposite the travel direction
+    const camOffset = new THREE.Vector3().subVectors(carPos, cameraPosition);
+    camOffset.y = 0;
+    camOffset.normalize();
+
+    // camOffset should point in the travel direction
+    const dot = camOffset.dot(travelDir);
+    expect(dot).toBeGreaterThan(0.99);
+  });
+
   it('tilts camera downward towards the car on turf when angle is negative (standard RL setting)', () => {
     const carPos = new THREE.Vector3(0, 30, 0); // Car resting on ground
     const carQuat = new THREE.Quaternion(); // Identity
@@ -152,8 +221,8 @@ describe('2. Camera Horizon Stability on Car Roll', () => {
   });
 });
 
-describe('3. BallCam Overhead Singularity Clamping', () => {
-  it('clamps overhead elevation to <= 82° when ball passes directly above car (90°)', () => {
+describe('3. BallCam Overhead Singularity Clamping & Dynamic Framing', () => {
+  it('clamps overhead elevation to <= 82° and keeps the car within view', () => {
     const carPos = new THREE.Vector3(0, 20, 0);
     
     // High altitude ball directly overhead: elevation angle would be ~85°+ without clamp
@@ -163,13 +232,49 @@ describe('3. BallCam Overhead Singularity Clamping', () => {
 
     // Elevation must be clamped to <= 82 degrees (1.43117 rad)
     expect(result.elevationRad).toBeLessThanOrEqual(MAX_BALL_ELEVATION_RAD + 1e-4);
-    expect(result.elevationRad).toBeCloseTo(MAX_BALL_ELEVATION_RAD, 3);
+
+    // Camera must frame the car inside the viewport
+    const camera = new THREE.PerspectiveCamera(77.56, 16 / 9, 10, 50000);
+    camera.position.copy(result.cameraPosition);
+    camera.quaternion.copy(result.cameraQuaternion);
+    camera.updateMatrixWorld();
+
+    const carProj = carPos.clone().project(camera);
+    expect(carProj.y).toBeGreaterThanOrEqual(-0.85);
+    expect(carProj.y).toBeLessThanOrEqual(0.5);
 
     // Look direction must be valid non-NaN finite vectors
     expect(Number.isFinite(result.lookTarget.x)).toBe(true);
     expect(Number.isFinite(result.lookTarget.y)).toBe(true);
     expect(Number.isFinite(result.lookTarget.z)).toBe(true);
     expect(Number.isFinite(result.cameraQuaternion.x)).toBe(true);
+  });
+
+  it('guarantees car remains in view and camera inside arena when car is on wall with high ball', () => {
+    // Frame 316 scenario: car on side wall, ball high in corner near ceiling
+    const carPos = new THREE.Vector3(-4079.0, 362.4, 730.5);
+    const ballPos = new THREE.Vector3(-3571.1, 1616.3, 3401.4);
+
+    const result = computeBallCam(carPos, ballPos, DEFAULT_CAMERA_SETTINGS);
+
+    // Camera must NOT penetrate the arena wall (X must be inside [-4030, +4030])
+    expect(result.cameraPosition.x).toBeGreaterThanOrEqual(-4030);
+    expect(result.cameraPosition.x).toBeLessThanOrEqual(4030);
+
+    // Car must be visible in viewport (NDC Y >= -0.85 and <= 0.85)
+    const camera = new THREE.PerspectiveCamera(77.56, 16 / 9, 10, 50000);
+    camera.position.copy(result.cameraPosition);
+    camera.quaternion.copy(result.cameraQuaternion);
+    camera.updateMatrixWorld();
+
+    const carProj = carPos.clone().project(camera);
+    expect(carProj.y).toBeGreaterThanOrEqual(-0.85);
+    expect(carProj.y).toBeLessThanOrEqual(0.85);
+
+    // Ball must also remain visible in viewport
+    const ballProj = ballPos.clone().project(camera);
+    expect(ballProj.y).toBeGreaterThanOrEqual(-0.85);
+    expect(ballProj.y).toBeLessThanOrEqual(0.85);
   });
 
   it('allows natural elevation when ball is within normal sight range (< 82°)', () => {
@@ -303,5 +408,64 @@ describe('4. Boost Pad Respawn Timer Clock Logic', () => {
 
     // Scrub to t = 35.0 (picked up at 30, respawns at 40) -> unavailable
     expect(manager.getPadStateAt(padId, 35.0).isAvailable).toBe(false);
+  });
+});
+
+describe('5. Rocket League Authentic Camera Geometry & FOV Scaling Verification', () => {
+  it('implements authentic Hor+ FOV scaling: vertical FOV is preserved across wide and ultrawide displays', () => {
+    const fovSetting = 110;
+    // Standard 16:9 aspect ratio:
+    const vFov16_9 = rlFovToThreeVerticalFov(fovSetting, 16 / 9);
+    expect(vFov16_9).toBeCloseTo(77.56, 1);
+
+    // 21:9 Ultrawide display (aspect ~ 2.37 or 2.2):
+    // In Rocket League (Hor+), vertical FOV does NOT shrink; extra horizontal width is revealed
+    const vFov21_9 = rlFovToThreeVerticalFov(fovSetting, 21 / 9);
+    expect(vFov21_9).toBeCloseTo(vFov16_9, 4);
+
+    // 32:9 Super-ultrawide display:
+    const vFov32_9 = rlFovToThreeVerticalFov(fovSetting, 32 / 9);
+    expect(vFov32_9).toBeCloseTo(vFov16_9, 4);
+
+    // 4:3 Narrower display: expands vertical FOV so horizontal view is not cropped
+    const vFov4_3 = rlFovToThreeVerticalFov(fovSetting, 4 / 3);
+    expect(vFov4_3).toBeGreaterThan(vFov16_9);
+  });
+
+  it('BallCam preserves full camera height above car even when the ball is at high elevation', () => {
+    const carPos = new THREE.Vector3(-2786.42, 17.04, 889.84);
+    const highBallPos = new THREE.Vector3(-3482.09, 1570.44, -4417.68);
+    const settings = {
+      ...DEFAULT_CAMERA_SETTINGS,
+      height: 110,
+      distance: 280,
+    };
+
+    const result = computeBallCam(carPos, highBallPos, settings);
+
+    // Camera height must be exactly carPos.y + settings.height (127.04 uu), NOT lowered to turf
+    expect(result.cameraPosition.y).toBeCloseTo(carPos.y + settings.height, 2);
+    expect(result.cameraPosition.y).toBeCloseTo(127.04, 1);
+  });
+
+  it('CarCam pitches upward with the vehicle during aerials while stabilizing roll', () => {
+    const carPos = new THREE.Vector3(0, 500, 0); // Aerial car
+    // Pitch car 45 degrees nose up (rotate around local right / Z)
+    const pitchRad = Math.PI / 4;
+    const carQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), pitchRad);
+
+    const { cameraPosition, lookTarget, cameraUp } = computeHorizonLockedCarCam(carPos, carQuat, {
+      ...DEFAULT_CAMERA_SETTINGS,
+      height: 100,
+      distance: 270,
+      angle: 0,
+    });
+
+    // Camera look direction must point upward following car climb
+    const lookVector = lookTarget.clone().sub(cameraPosition);
+    expect(lookVector.y).toBeGreaterThan(50);
+
+    // Camera Up must remain stable and upright
+    expect(cameraUp.y).toBeGreaterThan(0.5);
   });
 });

@@ -592,4 +592,38 @@ describe('Scene Graph & Manager Integrity Verification', () => {
 
     cars.dispose();
   });
+
+  it('CarManager: hides the followed POV player nameplate while keeping other players nameplates visible', () => {
+    const scene = new THREE.Scene();
+    const cars = new CarManager(scene);
+    const players = createMockPlayers();
+    cars.initCars(players);
+
+    const frameState = createMockFrameState();
+
+    // Following player 0 in POV:
+    cars.updateCars(frameState, 0);
+
+    const car0 = cars.getCarObject(0);
+    const nameplate0 = car0?.children.find((child) => child instanceof THREE.Sprite);
+    // Player 0 nameplate must be hidden so it doesn't block the camera view
+    expect(nameplate0?.visible).toBe(false);
+
+    const car1 = cars.getCarObject(1);
+    const nameplate1 = car1?.children.find((child) => child instanceof THREE.Sprite);
+    // Player 1 nameplate must remain visible
+    expect(nameplate1?.visible).toBe(true);
+
+    // Switch POV to player 1:
+    cars.updateCars(frameState, 1);
+    expect(nameplate0?.visible).toBe(true);
+    expect(nameplate1?.visible).toBe(false);
+
+    // Non-POV mode (activePovPlayerIndex = null):
+    cars.updateCars(frameState, null);
+    expect(nameplate0?.visible).toBe(true);
+    expect(nameplate1?.visible).toBe(true);
+
+    cars.dispose();
+  });
 });

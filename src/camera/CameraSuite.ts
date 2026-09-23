@@ -6,6 +6,7 @@ import {
   computeHorizonLockedCarCam,
   computeBallCam,
   blendCamera,
+  clampCameraInsideArena,
   rlFovToThreeVerticalFov
 } from '../math/cameraMath';
 import { FrameState } from '../types/replay';
@@ -27,6 +28,9 @@ export class CameraSuite {
   private directorCamPos: THREE.Vector3 = new THREE.Vector3(0, 1200, -3500);
   private ballCamOrbitYaw: number = 0;
   private hasBallCamOrbitYaw: boolean = false;
+  private carCamHeadingYaw: number = 0;
+  private hasCarCamHeadingYaw: boolean = false;
+  private needsSnap: boolean = true;
 
   constructor(domElement: HTMLElement, aspect: number) {
     this.domElement = domElement;
@@ -42,6 +46,11 @@ export class CameraSuite {
   }
 
   public setMode(mode: CameraMode) {
+    if (this.mode !== mode) {
+      this.needsSnap = true;
+      this.hasBallCamOrbitYaw = false;
+      this.hasCarCamHeadingYaw = false;
+    }
     this.mode = mode;
     if (mode === 'free') {
       this.controls.enabled = true;
@@ -58,11 +67,19 @@ export class CameraSuite {
   public setPlayer(playerIndex: number, playerSettings?: CameraSettings) {
     if (this.activePlayerIndex !== playerIndex) {
       this.hasBallCamOrbitYaw = false;
+      this.hasCarCamHeadingYaw = false;
+      this.needsSnap = true;
     }
     this.activePlayerIndex = playerIndex;
     if (playerSettings) {
       this.applySettings(playerSettings);
     }
+  }
+
+  public snap() {
+    this.needsSnap = true;
+    this.hasBallCamOrbitYaw = false;
+    this.hasCarCamHeadingYaw = false;
   }
 
   public toggleBallCam() {
@@ -128,11 +145,12 @@ export class CameraSuite {
       playerState.rotation.z,
       playerState.rotation.w
     );
-    const carSpeed = new THREE.Vector3(
+    const carVel = new THREE.Vector3(
       playerState.velocity.x,
       playerState.velocity.y,
       playerState.velocity.z
-    ).length();
+    );
+    const carSpeed = carVel.length();
 
     // Determine target BallCam state (manual override or replay recorded state)
     const targetBallCam = this.ballCamManualOverride !== null
@@ -150,8 +168,64 @@ export class CameraSuite {
       this.ballCamBlend = Math.max(0.0, this.ballCamBlend - blendRate);
     }
 
+    // In our Three space: Local +X is Forward, Local +Y is Up, Local +Z is Right
+    const forwardLocal = new THREE.Vector3(1, 0, 0);
+    const upLocal = new THREE.Vector3(0, 1, 0);
+    const carForwardWorld = forwardLocal.clone().applyQuaternion(carQuat);
+    const carUpWorld = upLocal.clone().applyQuaternion(carQuat);
+
+    // Wall detection
+    const isNearWallOrCeiling = Math.abs(carPos.x) > 3700 || Math.abs(carPos.z) > 4800 || carPos.y > 1850;
+    const isWallMounted = isNearWallOrCeiling && (
+      carUpWorld.y < 0.6 || Math.abs(carUpWorld.x) > 0.6 || Math.abs(carUpWorld.z) > 0.6
+    );
+
+    const isFlipping = playerState.dodgeActive || (!isWallMounted && (carUpWorld.y < 0.4 || carForwardWorld.y < -0.4));
+
+    let desiredHeadingYaw: number;
+    const vHorizSq = carVel.x * carVel.x + carVel.z * carVel.z;
+
+    if (isFlipping && vHorizSq > 2500) {
+      // During a dodge/flip, heading follows the horizontal travel direction (velocity)
+      desiredHeadingYaw = Math.atan2(carVel.z, carVel.x);
+    } else {
+      const fHoriz = new THREE.Vector2(carForwardWorld.x, carForwardWorld.z);
+      if (fHoriz.lengthSq() > 1e-4) {
+        desiredHeadingYaw = Math.atan2(carForwardWorld.z, carForwardWorld.x);
+      } else {
+        desiredHeadingYaw = this.carCamHeadingYaw;
+      }
+    }
+
+    if (!this.hasCarCamHeadingYaw || this.needsSnap) {
+      this.carCamHeadingYaw = desiredHeadingYaw;
+      this.hasCarCamHeadingYaw = true;
+    } else {
+      const yawDelta = Math.atan2(
+        Math.sin(desiredHeadingYaw - this.carCamHeadingYaw),
+        Math.cos(desiredHeadingYaw - this.carCamHeadingYaw)
+      );
+      const swivelSpeed = Math.max(1, this.currentSettings.swivel_speed || 4.8);
+      const trackingRate = 8 + swivelSpeed * 3;
+      this.carCamHeadingYaw += yawDelta * (1 - Math.exp(-trackingRate * deltaTime));
+    }
+
+    const stableHeading = new THREE.Vector3(
+      Math.cos(this.carCamHeadingYaw),
+      0,
+      Math.sin(this.carCamHeadingYaw)
+    );
+
     // Compute Car Cam with Horizon-Locked roll stability
-    const carCam = computeHorizonLockedCarCam(carPos, carQuat, this.currentSettings, carSpeed);
+    const carCam = computeHorizonLockedCarCam(
+      carPos,
+      carQuat,
+      this.currentSettings,
+      carSpeed,
+      carVel,
+      playerState.dodgeActive,
+      stableHeading
+    );
 
     // Track a persistent orbit around the player. Directly rebuilding this
     // direction from ball-to-car every frame makes it reverse by 180 degrees
@@ -183,13 +257,14 @@ export class CameraSuite {
       Math.sin(this.ballCamOrbitYaw)
     );
 
-    // Compute BallCam with Overhead Singularity Clamping (<= 82 deg)
+    // Compute BallCam with Overhead Singularity Clamping (<= 82 deg) and car framing guarantee
     const ballCam = computeBallCam(
       carPos,
       ballPos,
       this.currentSettings,
       carSpeed,
-      ballCamOrbitDirection
+      ballCamOrbitDirection,
+      this.camera.aspect
     );
 
     // Slerp blend between Car Cam and Ball Cam
@@ -203,8 +278,18 @@ export class CameraSuite {
     const posLerpRate = 1 - Math.exp(-(15 + stiffness * 45) * deltaTime);
     const rotSlerpRate = 1 - Math.exp(-(18 + stiffness * 42) * deltaTime);
 
-    this.currentCamPos.lerp(blended.position, posLerpRate);
-    this.currentCamQuat.slerp(blended.quaternion, rotSlerpRate);
+    if (this.needsSnap) {
+      this.currentCamPos.copy(blended.position);
+      this.currentCamQuat.copy(blended.quaternion);
+      this.needsSnap = false;
+    } else {
+      this.currentCamPos.lerp(blended.position, posLerpRate);
+      this.currentCamQuat.slerp(blended.quaternion, rotSlerpRate);
+    }
+
+    // Ensure camera never penetrates arena perimeter walls, corners, or ceiling
+    const safeCamPos = clampCameraInsideArena(this.currentCamPos, carPos);
+    this.currentCamPos.copy(safeCamPos);
 
     this.camera.position.copy(this.currentCamPos);
     this.camera.quaternion.copy(this.currentCamQuat);

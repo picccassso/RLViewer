@@ -160,6 +160,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     managersRef.current.clockTime = seekTarget.time;
     if (diff > 0.4) {
       managersRef.current.ball.resetTrail();
+      managersRef.current.cameraSuite.snap();
     }
 
     // When paused, immediately unpack and render the target frame for snappy feedback
@@ -168,15 +169,16 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       const { frameA, frameB, alpha } = getFrameSampleAtTime(replayData, seekTarget.time);
 
       const frameState = unpackFrame(replayData, frameA, frameB, alpha);
+      const activePov = cameraMode === 'pov' ? activePlayerIndex : null;
       ball.update(frameState.ball.position, frameState.ball.rotation);
-      cars.updateCars(frameState);
+      cars.updateCars(frameState, activePov);
       boostPads.updateStates(frameState.boostPadsAvailable, 0.016);
       cameraSuite.update(frameState, 0.016);
       renderer.render(scene, cameraSuite.camera);
 
       onTimeUpdate(seekTarget.time, frameState.frameIndex, frameState);
     }
-  }, [seekTarget, isPlaying, replayData, onTimeUpdate]);
+  }, [seekTarget, isPlaying, replayData, cameraMode, activePlayerIndex, onTimeUpdate]);
 
   // Render & Playback Loop
   useEffect(() => {
@@ -205,8 +207,9 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       const frameState = unpackFrame(replayData, frameA, frameB, alpha);
 
       // Update 3D entities
+      const activePov = cameraMode === 'pov' ? activePlayerIndex : null;
       ball.update(frameState.ball.position, frameState.ball.rotation);
-      cars.updateCars(frameState);
+      cars.updateCars(frameState, activePov);
       boostPads.updateStates(frameState.boostPadsAvailable, delta);
 
       // Update Camera
