@@ -2,3 +2,8 @@ node_modules/
 dist/
 .DS_Store
 *.log
+camera-captures/reports/
+tools/camera-capture/*.dll
+tools/camera-capture/*.lib
+tools/camera-capture/*.exp
+tools/camera-capture/*.obj
