@@ -46,6 +46,12 @@ function floorLayer(material: THREE.Material): number {
 /** Stadium meshes flatter than this are pitch surface and receive shadows. */
 const FLOOR_MAX_HEIGHT = 200;
 
+/**
+ * Stadium surfaces this close inside a wall or the ceiling vanish when the POV camera
+ * is outside it, covering the glass, its hexagon overlay and the wall-foot glow bands.
+ */
+const OUTSIDE_CUT_MARGIN = 80;
+
 /** Glass walls and hexagon overlays are already see-through; they are left alone. */
 const SEE_THROUGH_MATERIAL = /^(Vitre|Hexagone_T[01])$/i;
 
@@ -506,7 +512,7 @@ export class StadiumManager {
       const model = gltf.scene;
 
       model.updateMatrixWorld(true);
-      const sightlineMaterials = new Map<THREE.Material, THREE.Material>();
+      const cutoutMaterials = new Map<string, THREE.Material>();
       const graded = new Set<THREE.Material>();
       model.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
@@ -523,14 +529,17 @@ export class StadiumManager {
           }
 
           // The POV camera passes through the arena walls like in Rocket League, so
-          // trim outside the pitch (ad boards, rails, gutters) must not hide the car.
-          // Flat floor pieces are skipped: the car may be sitting on them.
-          const mat = mesh.material as THREE.Material;
-          if (!Array.isArray(mesh.material) && height >= 20 && !SEE_THROUGH_MATERIAL.test(mat.name)) {
-            let patched = sightlineMaterials.get(mat);
+          // stadium surfaces between it and the pitch must not hide the view. Trim
+          // outside the pitch (ad boards, rails, gutters) also keeps the car's sightline
+          // clear; flat floor pieces are skipped there, as the car may be sitting on them.
+          if (!Array.isArray(mesh.material)) {
+            const mat = mesh.material as THREE.Material;
+            const sightline = height >= 20 && !SEE_THROUGH_MATERIAL.test(mat.name);
+            const key = `${mat.uuid}|${sightline}`;
+            let patched = cutoutMaterials.get(key);
             if (!patched) {
-              patched = this.withSightlineCutout(mat);
-              sightlineMaterials.set(mat, patched);
+              patched = this.withCameraCutouts(mat, sightline);
+              cutoutMaterials.set(key, patched);
             }
             mesh.material = patched;
           }
@@ -582,12 +591,20 @@ export class StadiumManager {
   }
 
   /**
-   * Copy of `material` that dithers away fragments inside a cone from the camera to the
-   * followed car, stopping just short of the car.
+   * Copy of `material` that clears the POV camera's view of the pitch:
+   *
+   * - Rocket League's walls and ceiling are one-sided, so from a camera outside the
+   *   pitch they vanish. Every stadium fragment on the camera's side of a wall or the
+   *   ceiling it is outside of is dropped, except the goals.
+   * - With `sightline`, fragments inside a cone from the camera to the followed car are
+   *   dithered away, stopping just short of the car.
    */
-  private withSightlineCutout(material: THREE.Material): THREE.Material {
+  private withCameraCutouts(material: THREE.Material, sightline: boolean): THREE.Material {
     const patched = material.clone();
-    patched.onBeforeCompile = (shader) => {
+    const baseCompile = material.onBeforeCompile.bind(material);
+    const baseKey = material.customProgramCacheKey.bind(material);
+    patched.onBeforeCompile = (shader, renderer) => {
+      baseCompile(shader, renderer);
       Object.assign(shader.uniforms, this.sightlineUniforms);
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vSightWorldPos;')
@@ -602,12 +619,28 @@ export class StadiumManager {
 varying vec3 vSightWorldPos;
 uniform vec3 uSightFrom;
 uniform vec3 uSightTo;
-uniform float uSightActive;`
+uniform float uSightActive;
+bool inGoal(vec3 p, float margin) {
+  return abs(p.x) < ${(GOAL_WIDTH / 2).toFixed(1)} + margin && p.y < ${GOAL_HEIGHT.toFixed(1)} + margin
+    && abs(p.z) > ${(FIELD_LENGTH / 2).toFixed(1)} - margin;
+}`
         )
         .replace(
           '#include <clipping_planes_fragment>',
           `#include <clipping_planes_fragment>
-if (uSightActive > 0.5) {
+if (uSightActive > 0.5 && !inGoal(uSightFrom, 0.0)) {
+  vec3 cam = uSightFrom;
+  vec3 p = vSightWorldPos;
+  float m = ${OUTSIDE_CUT_MARGIN.toFixed(1)};
+  vec2 side = vec2(cam.x < 0.0 ? -1.0 : 1.0, cam.z < 0.0 ? -1.0 : 1.0);
+  bool outsideCut =
+    (abs(cam.x) > ${(FIELD_WIDTH / 2).toFixed(1)} && p.x * side.x > ${(FIELD_WIDTH / 2).toFixed(1)} - m)
+    || (abs(cam.z) > ${(FIELD_LENGTH / 2).toFixed(1)} && p.z * side.y > ${(FIELD_LENGTH / 2).toFixed(1)} - m && !inGoal(p, m))
+    || (cam.y > ${FIELD_CEILING.toFixed(1)} && p.y > ${FIELD_CEILING.toFixed(1)} - m)
+    || (abs(cam.x) + abs(cam.z) > ${CORNER_SLANT.toFixed(1)} && dot(p.xz, side) > ${CORNER_SLANT.toFixed(1)} - m * 1.4142);
+  if (outsideCut) discard;
+}
+${sightline ? `if (uSightActive > 0.5) {
   vec3 sight = uSightTo - uSightFrom;
   float sightLength = max(length(sight), 1.0);
   float along = dot(vSightWorldPos - uSightFrom, sight) / (sightLength * sightLength);
@@ -619,9 +652,10 @@ if (uSightActive > 0.5) {
   // Screen-door dither keeps the cut-out sorted correctly without transparency.
   float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
   if (cut * 0.9 > noise) discard;
-}`
+}` : ''}`
         );
     };
+    patched.customProgramCacheKey = () => `${baseKey()}|camera-cutouts-${sightline}`;
     return patched;
   }
 
