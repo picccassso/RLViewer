@@ -29,6 +29,13 @@ export const MIN_BALL_ELEVATION_RAD = (-55 * Math.PI) / 180;
 /** Lowest camera height above the turf, so the boom never scrapes the floor. */
 export const CAMERA_MIN_HEIGHT = 30;
 
+/**
+ * Share of the ball's upward elevation from the car that Ball Cam pitches the view by.
+ * Measured from broadcast POV footage of the sample match: a ball on the roof (61°)
+ * tilts the view ~9°, one 20° up during an aerial ~3°, one right overhead ~13°.
+ */
+export const BALL_CAM_PITCH_SCALE = 0.15;
+
 /** The followed car is kept within this fraction of the half-FOV. */
 export const CAR_FRAMING_LIMIT_NDC = 0.8;
 
@@ -188,19 +195,16 @@ export function computeCarCamAim(
 }
 
 /**
- * Ball Cam aim. It turns to put the ball straight ahead of the car, then pitches up
- * towards the ball as seen from the camera's eye (`eye.distance` behind and
- * `eye.height` above the car), not from the car itself. Like Rocket League, a ball
- * resting on the roof or just above the car only tilts the view a little, instead of
- * sending the camera under the car to look straight up. Balls below the car are aimed
- * at from the car. As the ball comes overhead its ground direction becomes meaningless,
- * so the aim eases onto the car heading instead of spinning around.
+ * Ball Cam aim. It turns to put the ball straight ahead of the car, then pitches up by
+ * only `BALL_CAM_PITCH_SCALE` of the ball's elevation from the car, so a high ball
+ * rides up the frame while the car stays close to its usual spot. Balls below the car
+ * are aimed at fully. As the ball comes overhead its ground direction becomes
+ * meaningless, so the aim eases onto the car heading instead of spinning around.
  */
 export function computeBallCamAim(
   carPosition: THREE.Vector3,
   ballPosition: THREE.Vector3,
-  heading: THREE.Vector3,
-  eye: { distance: number; height: number } = DEFAULT_CAMERA_SETTINGS
+  heading: THREE.Vector3
 ): { aim: THREE.Quaternion; horizontalDistance: number; elevationRad: number } {
   const toBall = ballPosition.clone().sub(carPosition);
   const horizontalDistance = Math.hypot(toBall.x, toBall.z);
@@ -213,18 +217,13 @@ export function computeBallCamAim(
     if (blended.lengthSq() > 1e-4) ground.copy(blended.normalize());
   }
 
-  // Above the eye, pitch up from the eye; below the car, pitch down from the car;
-  // in between, stay level. Continuous at both boundaries.
-  const eyeToBall = toBall.clone().addScaledVector(ground, eye.distance);
-  eyeToBall.y -= eye.height;
-  const fromEye = Math.atan2(eyeToBall.y, Math.hypot(eyeToBall.x, eyeToBall.z));
-  const fromCar = Math.atan2(toBall.y, horizontalDistance);
   const elevationRad = Math.min(
-    Math.max(fromEye > 0 ? fromEye : Math.min(fromCar, 0), MIN_BALL_ELEVATION_RAD),
+    Math.max(Math.atan2(toBall.y, horizontalDistance), MIN_BALL_ELEVATION_RAD),
     MAX_BALL_ELEVATION_RAD
   );
-  const direction = ground.multiplyScalar(Math.cos(elevationRad));
-  direction.y = Math.sin(elevationRad);
+  const pitchRad = elevationRad > 0 ? elevationRad * BALL_CAM_PITCH_SCALE : elevationRad;
+  const direction = ground.multiplyScalar(Math.cos(pitchRad));
+  direction.y = Math.sin(pitchRad);
 
   return { aim: lookRotation(direction, WORLD_UP), horizontalDistance, elevationRad };
 }

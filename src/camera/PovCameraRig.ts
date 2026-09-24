@@ -105,10 +105,7 @@ export class PovCameraRig {
     this.carHeading.copy(heading);
 
     const carAim = computeCarCamAim(carPos, carQuat, heading);
-    const ballCam = computeBallCamAim(carPos, ballPos, heading, {
-      distance: settings.distance * this.distanceMultiplier,
-      height: settings.height,
-    });
+    const ballCam = computeBallCamAim(carPos, ballPos, heading);
     const targetAim = slerpAim(carAim.clone(), ballCam.aim, ballCamWeight);
 
     // Car Cam follows the car nearly rigidly. Ball Cam is looser, and slower still
