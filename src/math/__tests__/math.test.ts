@@ -23,7 +23,7 @@ import {
   placeBoomCamera,
   rlFovToThreeVerticalFov,
   slerpAim,
-  smoothAim,
+  springAim,
   trackCarHeading
 } from '../cameraMath';
 import {
@@ -238,14 +238,39 @@ describe('2. Car Cam Boom Rig', () => {
     const target = new THREE.Quaternion().setFromAxisAngle(WORLD_UP, THREE.MathUtils.degToRad(60));
     const at60 = new THREE.Quaternion();
     const at144 = new THREE.Quaternion();
-    for (let i = 0; i < 12; i++) smoothAim(at60, target, 10, Math.PI * 4, 1 / 60);
-    for (let i = 0; i < 29; i++) smoothAim(at144, target, 10, Math.PI * 4, 1 / 144);
+    const v60 = new THREE.Vector3();
+    const v144 = new THREE.Vector3();
+    for (let i = 0; i < 12; i++) springAim(at60, v60, target, 10, Math.PI * 4, 1 / 60);
+    for (let i = 0; i < 29; i++) springAim(at144, v144, target, 10, Math.PI * 4, 1 / 144);
     expect(THREE.MathUtils.radToDeg(at60.angleTo(at144))).toBeLessThan(0.5);
 
-    // Turn-rate cap: never more than 90°/s
+    // Turn-rate cap: never more than 90°/s once up to speed
     const capped = new THREE.Quaternion();
-    smoothAim(capped, target, 1000, Math.PI / 2, 0.1);
+    springAim(capped, new THREE.Vector3(0, Math.PI / 2, 0), target, 1000, Math.PI / 2, 0.1);
     expect(THREE.MathUtils.radToDeg(capped.angleTo(new THREE.Quaternion()))).toBeCloseTo(9, 3);
+  });
+
+  it('eases into a big swing and settles on the target without overshooting it', () => {
+    // Ball Cam turning round after the ball pops over the car
+    const target = new THREE.Quaternion().setFromAxisAngle(WORLD_UP, THREE.MathUtils.degToRad(170));
+    const aim = new THREE.Quaternion();
+    const velocity = new THREE.Vector3();
+    const maxTurn = THREE.MathUtils.degToRad(300);
+    const dt = 1 / 60;
+    const rates: number[] = [];
+    let previous = 0;
+    for (let i = 0; i < 120; i++) {
+      springAim(aim, velocity, target, 9, maxTurn, dt);
+      const turned = THREE.MathUtils.radToDeg(aim.angleTo(new THREE.Quaternion()));
+      expect(turned).toBeLessThanOrEqual(170 + 1e-6);
+      rates.push((turned - previous) / dt);
+      previous = turned;
+    }
+    expect(rates[0]).toBeLessThan(50);
+    expect(rates[3]).toBeLessThan(rates[6]);
+    expect(Math.max(...rates)).toBeLessThanOrEqual(300 + 1e-6);
+    expect(Math.min(...rates)).toBeGreaterThanOrEqual(-1e-6);
+    expect(THREE.MathUtils.radToDeg(aim.angleTo(target))).toBeLessThan(0.1);
   });
 });
 
@@ -472,8 +497,9 @@ describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
     const target = computeBallCamAim(carPos, new THREE.Vector3(900, 1400, 300), heading).aim;
 
     let worstRoll = 0;
+    const velocity = new THREE.Vector3();
     for (let i = 0; i < 120; i++) {
-      smoothAim(aim, target, 9, THREE.MathUtils.degToRad(300), 1 / 60);
+      springAim(aim, velocity, target, 9, THREE.MathUtils.degToRad(300), 1 / 60);
       worstRoll = Math.max(worstRoll, Math.abs(rollDegOf(aim)));
     }
     expect(worstRoll).toBeLessThan(0.01);

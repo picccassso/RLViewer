@@ -7,7 +7,7 @@ import {
   getSpeedDistanceMultiplier,
   placeBoomCamera,
   slerpAim,
-  smoothAim,
+  springAim,
   trackCarHeading
 } from '../math/cameraMath';
 import { FrameState } from '../types/replay';
@@ -29,6 +29,7 @@ export class PovCameraRig {
   private ballCamBlend: number = 1.0; // 0 = CarCam, 1 = BallCam
   // A smoothed aim orientation around the car's live position
   private aim: THREE.Quaternion = new THREE.Quaternion();
+  private aimVelocity: THREE.Vector3 = new THREE.Vector3();
   private carHeading: THREE.Vector3 = new THREE.Vector3(1, 0, 0);
   private distanceMultiplier: number = 1;
   private orbit: number = 0;
@@ -122,18 +123,21 @@ export class PovCameraRig {
     const snapped = this.needsSnap;
     if (this.needsSnap) {
       this.aim.copy(targetAim);
+      this.aimVelocity.set(0, 0, 0);
       this.distanceMultiplier = speedStretch;
       this.needsSnap = false;
     } else {
-      smoothAim(this.aim, targetAim, rate, maxTurnRate, deltaTime);
+      springAim(this.aim, this.aimVelocity, targetAim, rate, maxTurnRate, deltaTime);
       this.distanceMultiplier += (speedStretch - this.distanceMultiplier) * (1 - Math.exp(-3 * deltaTime));
     }
 
     // Ball Cam's upward aim tilts the view rather than swinging the boom under the car,
     // so the camera keeps its height behind the car on the turf and in the air. Only a
-    // ball that would still sit too high on screen swings the boom under the car.
+    // ball that would still sit too high on screen swings the boom under the car. It is
+    // measured from the aim the camera is turning to: mid-swing, with the ball still
+    // behind the view, the boom would otherwise dive under the car and climb back out.
     const orbit = ballCamWeight > 0
-      ? computeBallCamOrbit(carPos, ballPos, this.aim, settings, this.distanceMultiplier, aspect, ballCamWeight)
+      ? computeBallCamOrbit(carPos, ballPos, targetAim, settings, this.distanceMultiplier, aspect, ballCamWeight)
       : { orbitRad: 0, maxOrbitRad: 0 };
     const targetOrbit = ballCamWeight * orbit.orbitRad;
     this.orbit = snapped ? targetOrbit : this.orbit + (targetOrbit - this.orbit) * (1 - Math.exp(-rate * deltaTime));

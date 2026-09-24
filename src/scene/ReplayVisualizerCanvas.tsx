@@ -271,8 +271,9 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       trails.update(frameState);
       boostPads.updateStates(frameState.boostPadsAvailable, delta);
 
-      // Update Camera
-      cameraSuite.update(frameState, delta);
+      // Update Camera. Its smoothing runs on the replay clock, so at 2x the camera moves
+      // like the game's camera sped up rather than falling behind and chasing the car.
+      cameraSuite.update(frameState, isPlaying ? delta * playbackSpeed : delta);
       stadium.setSightline(cameraSuite.camera.position, cameraSuite.followTarget);
 
       // Render

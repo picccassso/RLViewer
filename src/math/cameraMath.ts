@@ -469,21 +469,73 @@ function excessAngle(angle: number, limit: number): number {
   return 0;
 }
 
+/** Time the aim takes to build up to its full turn rate from standing still. */
+export const AIM_SPIN_UP_SECONDS = 0.15;
+
 /**
- * Rotates `current` towards `target` with exponential smoothing and a turn-rate cap,
- * so behaviour is identical at 60 Hz, 144 Hz and across dropped frames.
+ * Turns `current` towards `target` like a critically damped spring, carrying the aim's
+ * angular velocity (rad/s, world axes) in `velocity` between frames. A big swing, like
+ * Ball Cam turning round as the ball pops over the car, eases in and out instead of
+ * jumping straight to full speed. It never overshoots a target that stops, and it
+ * behaves the same at 60 Hz, 144 Hz and across dropped frames.
+ *
+ * `rate` matches the pace of exponential smoothing at that rate: the aim trails a
+ * steadily turning target by the same amount. The aim never turns faster than
+ * `maxTurnRateRad` per second, and takes `AIM_SPIN_UP_SECONDS` to build up to that
+ * speed. Slowing down is never limited, so the aim can always stop on the target.
  */
-export function smoothAim(
+export function springAim(
   current: THREE.Quaternion,
+  velocity: THREE.Vector3,
   target: THREE.Quaternion,
   rate: number,
   maxTurnRateRad: number,
   deltaTime: number
 ): THREE.Quaternion {
-  const angle = current.angleTo(target);
-  if (angle < 1e-6) return current.copy(target);
-  const step = Math.min(angle * (1 - Math.exp(-rate * deltaTime)), maxTurnRateRad * deltaTime);
-  return slerpAim(current, target, Math.min(step / angle, 1));
+  if (deltaTime <= 0) return current;
+  const level = isLevelAim(current) && isLevelAim(target);
+  const previousSpeed = velocity.length();
+
+  // Offset of the aim from the target as a rotation vector, the short way round.
+  const offsetQuat = current.clone().multiply(target.clone().invert());
+  if (offsetQuat.w < 0) offsetQuat.set(-offsetQuat.x, -offsetQuat.y, -offsetQuat.z, -offsetQuat.w);
+  const sinHalf = Math.hypot(offsetQuat.x, offsetQuat.y, offsetQuat.z);
+  const angle = 2 * Math.atan2(sinHalf, offsetQuat.w);
+  const offset = sinHalf > 1e-9
+    ? new THREE.Vector3(offsetQuat.x, offsetQuat.y, offsetQuat.z).multiplyScalar(angle / sinHalf)
+    : new THREE.Vector3();
+
+  // Critically damped step (Game Programming Gems 4, "Critically Damped Ease-In/Out")
+  const omega = 2 * rate;
+  const x = omega * deltaTime;
+  const decay = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+  const push = velocity.clone().addScaledVector(offset, omega).multiplyScalar(deltaTime);
+  velocity.addScaledVector(push, -omega).multiplyScalar(decay);
+  const next = offset.clone().add(push).multiplyScalar(decay);
+
+  // The aim spins up to the turn-rate cap and cruises there, then the spring eases it
+  // onto the target.
+  const turn = next.clone().sub(offset);
+  const maxSpeed = Math.min(maxTurnRateRad, previousSpeed + (maxTurnRateRad / AIM_SPIN_UP_SECONDS) * deltaTime);
+  const maxTurn = maxSpeed * deltaTime;
+  if (turn.length() > maxTurn) {
+    turn.setLength(maxTurn);
+    next.copy(offset).add(turn);
+    velocity.copy(turn).divideScalar(deltaTime);
+  }
+  offset.copy(next);
+
+  const remaining = offset.length();
+  const step = remaining > 1e-9
+    ? new THREE.Quaternion().setFromAxisAngle(offset.divideScalar(remaining), remaining)
+    : new THREE.Quaternion();
+  current.copy(step.multiply(target));
+  if (!level) return current;
+
+  // A turn that both yaws and pitches banks the horizon; level it about the view direction.
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(current);
+  if (Math.abs(forward.y) > 0.999) return current;
+  return current.copy(lookRotation(forward, WORLD_UP));
 }
 
 /**
