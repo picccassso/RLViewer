@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { UploadCloud, FileCode, Play, Loader2, Eye, EyeOff } from 'lucide-react';
+import { RLViewerLogo } from './RLViewerLogo';
 
 /** How long the show-interface button stays up after the mouse stops moving. */
 const REVEAL_IDLE_MS = 2500;
@@ -154,11 +155,13 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
       {/* Start screen: nothing is open yet */}
       {showStartPrompt && (
         <div className="fixed inset-0 z-30 flex items-center justify-center p-4 text-white">
-          <div className="ui-panel w-full max-w-sm p-5 text-center">
-            <UploadCloud size={28} className="mx-auto mb-3 text-slate-300" />
-            <h2 className="text-base font-semibold tracking-wide">Open a replay</h2>
+          <div className="ui-panel w-full max-w-sm p-6 text-center">
+            <div className="flex justify-center mb-3">
+              <RLViewerLogo size={48} />
+            </div>
+            <h2 className="text-lg font-bold tracking-tight">RL<span className="text-cyan-400">Viewer</span></h2>
             <p className="mt-1 text-xs text-slate-400">
-              Choose a .replay file or drop one anywhere. It's parsed locally and never uploaded.
+              Choose a Rocket League .replay file or drop one anywhere. It's parsed locally and never uploaded.
             </p>
             <div className="mt-4 flex flex-col gap-2">
               <button

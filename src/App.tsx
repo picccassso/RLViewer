@@ -11,6 +11,7 @@ import { TacticalMinimap } from './components/TacticalMinimap';
 import { CameraToolbar } from './components/CameraToolbar';
 import { PlaybackTimeline } from './components/PlaybackTimeline';
 import { DropZoneOverlay } from './components/DropZoneOverlay';
+import { RLViewerLogo } from './components/RLViewerLogo';
 import type { AudioStatus } from './audio/ReplayAudio';
 
 function loadAudioSettings() {
@@ -249,8 +250,8 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="absolute top-3 left-3 z-20 ui-panel px-3 py-2 pointer-events-none">
-            <span className="text-[11px] font-semibold tracking-[0.14em] text-slate-200">RL VIEWER</span>
+          <div className="absolute top-3 left-3 z-20 ui-panel px-2.5 py-1.5 pointer-events-none flex items-center">
+            <RLViewerLogo size={20} showText={true} />
           </div>
 
           {/* 4. Analysis and camera controls */}
