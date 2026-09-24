@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { PlayerInfo, FrameState } from '../types/replay';
+import { PlayerInfo, FrameState, ParsedReplayData } from '../types/replay';
 import { carModelFor } from './carBodies';
 import { SUPERSONIC_SPEED_THRESHOLD } from '../math/cameraMath';
+import { buildWheelTravel, sampleWheelTravel } from '../math/wheelRotation';
 
 // Octane Hitbox: 118.01 length (X), 36.16 height (Y), 84.20 width (Z)
 export const HITBOX_DIMENSIONS: Record<string, { length: number; width: number; height: number }> = {
@@ -74,6 +75,13 @@ export function applyTeamPaint(mat: THREE.MeshStandardMaterial, team: 0 | 1) {
   mat.customProgramCacheKey = () => 'team-paint';
 }
 
+interface RollingWheel {
+  object: THREE.Object3D;
+  restRotation: THREE.Quaternion;
+  radius: number;
+  direction: number;
+}
+
 interface CarEntity {
   info: PlayerInfo;
   group: THREE.Group;
@@ -86,6 +94,8 @@ interface CarEntity {
   boostFlame: THREE.Group;
   hitboxWireframe: THREE.LineSegments;
   isModelLoaded: boolean;
+  wheels: RollingWheel[];
+  wheelDistance: number;
 }
 
 export class CarManager {
@@ -102,6 +112,10 @@ export class CarManager {
   private nameplatesVisible: boolean = true;
   private groundShadows: THREE.InstancedMesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null = null;
   private shadowTransform = new THREE.Object3D();
+  private replayData: ParsedReplayData | null = null;
+  private wheelTravel: Float64Array[] = [];
+  private wheelSpin = new THREE.Quaternion();
+  private wheelAxis = new THREE.Vector3(0, 0, 1);
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -227,6 +241,8 @@ export class CarManager {
         boostFlame,
         hitboxWireframe,
         isModelLoaded: false,
+        wheels: [],
+        wheelDistance: 0,
       };
 
       this.carEntities.set(player.index, entity);
@@ -278,8 +294,12 @@ export class CarManager {
       glbScene.rotation.y = 0; // Front is already +X
 
       // Load & attach authentic 3D wheels to Wheel_FR, Wheel_FL, Wheel_BR, Wheel_BL bones
+      const wheels: RollingWheel[] = [];
       try {
         const wheelModel = await this.getWheelModel();
+        // The shared wheel model's axle is local Z; its radial extent is in X/Y.
+        const size = new THREE.Box3().setFromObject(wheelModel).getSize(new THREE.Vector3());
+        const modelRadius = Math.max(size.x, size.y) / 2;
         // Collect target wheel attachment bones first without modifying tree during traversal
         const wheelBones: THREE.Object3D[] = [];
         glbScene.traverse((child) => {
@@ -292,6 +312,15 @@ export class CarManager {
           bone.clear();
           const wheelInstance = wheelModel.clone(true);
           bone.add(wheelInstance);
+          const scale = bone.getWorldScale(new THREE.Vector3());
+          const axle = new THREE.Vector3(0, 0, 1).applyQuaternion(bone.getWorldQuaternion(new THREE.Quaternion()));
+          wheels.push({
+            object: wheelInstance,
+            restRotation: wheelInstance.quaternion.clone(),
+            radius: Math.max(1, modelRadius * Math.max(Math.abs(scale.x), Math.abs(scale.y))),
+            // Left wheel mounts face the other way, so their local spin must be reversed.
+            direction: axle.z < 0 ? -1 : 1,
+          });
         }
       } catch (wheelErr) {
         console.warn('[CarManager] Could not attach wheels:', wheelErr);
@@ -327,6 +356,8 @@ export class CarManager {
       entity.group.add(glbScene);
       entity.carMesh = glbScene;
       entity.isModelLoaded = true;
+      entity.wheels = wheels;
+      this.updateWheelRotation(entity);
     } catch (err) {
       console.warn('[CarManager] Failed to load GLB car model:', err);
       // Keep procedural chassis
@@ -374,6 +405,11 @@ export class CarManager {
       entity.nameplate.visible = entity.group.visible && this.nameplatesVisible && !isPovTarget;
       if (!entity.group.visible) continue;
       if (entity.nameplate.visible) this.updateNameplateBoost(entity, boost);
+      const travel = this.wheelTravel[playerState.info.index];
+      if (this.replayData && travel) {
+        entity.wheelDistance = sampleWheelTravel(this.replayData, travel, frameState.frameIndex, frameState.time);
+        this.updateWheelRotation(entity);
+      }
 
       // Position and Rotation
       entity.group.position.set(position.x, position.y, position.z);
@@ -412,6 +448,19 @@ export class CarManager {
     entity.nameplateBoostFill.style.transform = `scaleX(${amount / 100})`;
   }
 
+  public setReplay(data: ParsedReplayData) {
+    this.replayData = data;
+    this.wheelTravel = buildWheelTravel(data);
+  }
+
+  private updateWheelRotation(entity: CarEntity) {
+    for (const wheel of entity.wheels) {
+      const angle = (-entity.wheelDistance / wheel.radius * wheel.direction) % (Math.PI * 2);
+      this.wheelSpin.setFromAxisAngle(this.wheelAxis, angle);
+      wheel.object.quaternion.copy(wheel.restRotation).multiply(this.wheelSpin);
+    }
+  }
+
   public getCarObject(playerIndex: number): THREE.Object3D | null {
     return this.carEntities.get(playerIndex)?.group ?? null;
   }
@@ -430,6 +479,8 @@ export class CarManager {
   }
 
   public clear() {
+    this.replayData = null;
+    this.wheelTravel = [];
     if (this.groundShadows) {
       this.carsGroup.remove(this.groundShadows);
       this.groundShadows.dispose();

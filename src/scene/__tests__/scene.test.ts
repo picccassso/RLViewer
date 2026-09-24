@@ -8,6 +8,8 @@ import { BoostPadManager } from '../BoostPadManager';
 import { CameraSuite } from '../../camera/CameraSuite';
 import { PlayerInfo, FrameState } from '../../types/replay';
 import { DEFAULT_CAMERA_SETTINGS } from '../../math/cameraMath';
+import { FLOATS_PER_BALL, FLOATS_PER_PLAYER, MAX_PLAYERS, ParsedReplayData, TOTAL_FLOATS_PER_FRAME } from '../../types/replay';
+import { unpackFrame } from '../../math/frameUnpacker';
 
 function createMockPlayers(): PlayerInfo[] {
   return [
@@ -144,6 +146,58 @@ function createSimulatedWheelGLTF() {
 }
 
 describe('Scene Graph & Manager Integrity Verification', () => {
+  it('CarManager: rolls mirrored wheel mounts at their own radii without moving the axles', async () => {
+    const manager = new CarManager(new THREE.Scene());
+    (manager as any).gltfLoader.loadAsync = async (url: string) => {
+      if (url.includes('Wheel_Boog')) {
+        const scene = new THREE.Group();
+        const geometry = new THREE.CylinderGeometry(0.16, 0.16, 0.1, 24);
+        geometry.rotateX(Math.PI / 2);
+        scene.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial()));
+        return { scene };
+      }
+      const model = createSimulatedCarGLTF('Octane');
+      model.scene.traverse((object) => {
+        if (!/^Wheel_(FR|FL|BR|BL)$/.test(object.name)) return;
+        object.position.set(object.name.includes('_F') ? 0.5 : -0.35, -0.05, object.name.endsWith('L') ? -0.3 : 0.3);
+        object.scale.setScalar(object.name.includes('_F') ? 0.75 : 0.84);
+        if (object.name.endsWith('L')) object.rotation.y = Math.PI;
+      });
+      return model;
+    };
+    const players = [createMockPlayers()[0]];
+    manager.initCars(players);
+    const framesBuffer = new Float32Array(3 * TOTAL_FLOATS_PER_FRAME);
+    for (let f = 0; f < 3; f++) {
+      const o = f * TOTAL_FLOATS_PER_FRAME;
+      framesBuffer.set([f * 15, 17, 0, 0, 0, 0, 1, 300, 0, 0, 0, 1], o + FLOATS_PER_BALL);
+      framesBuffer[o + FLOATS_PER_BALL + MAX_PLAYERS * FLOATS_PER_PLAYER] = f * 0.05;
+    }
+    const data: ParsedReplayData = { framesBuffer, players, totalFrames: 3, duration: 0.1, frameRate: 20,
+      boostPads: [], tickMarks: [], teamScores: { team0: 0, team1: 0 }, ballTouches: [], flipResets: [], demolitions: [] };
+    manager.setReplay(data);
+    manager.updateCars(unpackFrame(data, 1));
+    // A model finishing its async load while paused still gets the current wheel phase.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const entity = (manager as any).carEntities.get(0);
+    expect(entity.wheels).toHaveLength(4);
+    const right = entity.carMesh.getObjectByName('Wheel_FR') as THREE.Object3D;
+    const left = entity.carMesh.getObjectByName('Wheel_FL') as THREE.Object3D;
+    const rear = entity.carMesh.getObjectByName('Wheel_BR') as THREE.Object3D;
+    expect(right.children[0].rotation.z).toBeCloseTo(-15 / 12, 4);
+    expect(left.children[0].rotation.z).toBeCloseTo(15 / 12, 4);
+    expect(rear.children[0].rotation.z).toBeCloseTo(-15 / 13.44, 4);
+    expect(right.position.toArray()).toEqual([0.5, -0.05, 0.3]);
+    const paused = right.children[0].quaternion.clone();
+    manager.updateCars(unpackFrame(data, 1));
+    expect(right.children[0].quaternion.equals(paused)).toBe(true);
+    manager.updateCars(unpackFrame(data, 2));
+    expect(right.children[0].quaternion.equals(paused)).toBe(false);
+    manager.updateCars(unpackFrame(data, 1));
+    expect(right.children[0].quaternion.equals(paused)).toBe(true);
+    manager.dispose();
+  });
+
   it('CarManager: attaches wheels to exact wheel bones without recursion or cycles', () => {
     const scene = new THREE.Scene();
     const carManager = new CarManager(scene);

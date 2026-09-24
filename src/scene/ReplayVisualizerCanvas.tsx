@@ -191,6 +191,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     const { boostPads, cars, trails, impacts } = managersRef.current;
     boostPads.initPads(replayData.boostPads);
     cars.initCars(replayData.players);
+    cars.setReplay(replayData);
     trails.setReplay(replayData);
     impacts.setReplay(replayData);
     managersRef.current.audio.setReplay(replayData);
