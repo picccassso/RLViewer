@@ -30,6 +30,51 @@ export const MIN_BALL_ELEVATION_RAD = (-55 * Math.PI) / 180;
 export const CAMERA_MIN_HEIGHT = 30;
 
 /**
+ * Shortest the boom gets when it runs into the turf, as a share of its length. Measured
+ * from broadcast footage: Kiileerrz low on a side wall at 2:31 in the sample match,
+ * the ball far overhead, with the camera ~120 uu from the car instead of ~300.
+ */
+export const BOOM_MIN_LENGTH_SHARE = 0.25;
+
+/** Car heights (uu) over which the boom goes from swinging clear of the turf to shortening. */
+const BOOM_SHORTEN_FROM_HEIGHT = 60;
+const BOOM_SHORTEN_BLEND = 190;
+
+/**
+ * Top of the stadium barrier behind the glass walls (ad boards and trim), which the
+ * camera cannot pass below once outside the pitch. It rises over the first
+ * `OUTSIDE_FLOOR_RAMP` uu outside a wall so the camera never jumps crossing it.
+ */
+const OUTSIDE_FLOOR_HEIGHT = 200;
+const OUTSIDE_FLOOR_RAMP = 60;
+const GOAL_HALF_WIDTH = 892.755;
+const GOAL_HEIGHT = 642.775;
+
+function smoothstep01(x: number): number {
+  const t = Math.min(Math.max(x, 0), 1);
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Lowest the camera may go at `position`: just above the turf inside the pitch and in
+ * the goals, the stadium barrier outside the walls. `barrierWeight` scales the barrier
+ * in, so a car driving on the turf keeps its camera through the walls unchanged.
+ */
+function cameraFloorHeight(position: THREE.Vector3, barrierWeight: number): number {
+  if (barrierWeight <= 0) return CAMERA_MIN_HEIGHT;
+  const ax = Math.abs(position.x);
+  const az = Math.abs(position.z);
+  const inGoal = ax < GOAL_HALF_WIDTH && position.y < GOAL_HEIGHT;
+  const outside = Math.max(
+    ax - ARENA_HALF_WIDTH,
+    inGoal ? -Infinity : az - ARENA_HALF_LENGTH,
+    (ax + az - ARENA_CORNER) / Math.SQRT2
+  );
+  const ramp = Math.min(Math.max(outside / OUTSIDE_FLOOR_RAMP, 0), 1);
+  return CAMERA_MIN_HEIGHT + (OUTSIDE_FLOOR_HEIGHT - CAMERA_MIN_HEIGHT) * ramp * barrierWeight;
+}
+
+/**
  * Share of the ball's upward elevation from the car that Ball Cam pitches the view by.
  * Measured from broadcast POV footage of the sample match: a ball on the roof (61°)
  * tilts the view ~9°, one 20° up during an aerial ~3°, one right overhead ~13°.
@@ -277,7 +322,7 @@ export function placeBoomCamera(
   aspect: number = 16 / 9,
   viewPitchShare: number = 0,
   orbitRad: number = 0
-): { position: THREE.Vector3; quaternion: THREE.Quaternion } {
+): { position: THREE.Vector3; quaternion: THREE.Quaternion; floorSwingRad: number } {
   const right = new THREE.Vector3(1, 0, 0).applyQuaternion(aim);
   // Ball Cam's orbit swings boom and view up together, taking the camera under the car.
   const orbit = new THREE.Quaternion().setFromAxisAngle(right, orbitRad);
@@ -293,17 +338,43 @@ export function placeBoomCamera(
   const up = new THREE.Vector3(0, 1, 0).applyQuaternion(boomAim);
   const offset = back.multiplyScalar(settings.distance * distanceMultiplier).addScaledVector(up, settings.height);
 
-  // Swing the boom down (camera up) just enough to clear the turf.
-  if (pivot.y + offset.y < CAMERA_MIN_HEIGHT) {
+  // Keep the camera above the floor. With the car up a wall or in the air, the boom
+  // first shortens towards the car, keeping the car's spot on screen, and outside the
+  // glass it stops on the stadium barrier behind the walls, like the game's camera.
+  // Close to the turf, where that would put the camera inside the car, the boom swings
+  // up instead.
+  const raised = smoothstep01((pivot.y - BOOM_SHORTEN_FROM_HEIGHT) / BOOM_SHORTEN_BLEND);
+  const floorAt = (offsetY: THREE.Vector3) => cameraFloorHeight(pivot.clone().add(offsetY), raised);
+  if (offset.y < 0 && pivot.y + offset.y < floorAt(offset)) {
+    const shortest = 1 - (1 - BOOM_MIN_LENGTH_SHARE) * raised;
+    const clears = (t: number) => {
+      const scaled = offset.clone().multiplyScalar(t);
+      return pivot.y + scaled.y >= floorAt(scaled);
+    };
+    let low = shortest;
+    let high = 1;
+    if (clears(shortest)) {
+      for (let i = 0; i < 16; i++) {
+        const mid = (low + high) / 2;
+        if (clears(mid)) low = mid;
+        else high = mid;
+      }
+    }
+    offset.multiplyScalar(low);
+  }
+  // Swing the boom down (camera up) just enough to clear the floor.
+  let floorSwingRad = 0;
+  if (pivot.y + offset.y < floorAt(offset)) {
     let low = 0;
     let high = Math.PI / 2;
     for (let i = 0; i < 16; i++) {
       const mid = (low + high) / 2;
-      const y = offset.clone().applyAxisAngle(right, -mid).y;
-      if (pivot.y + y < CAMERA_MIN_HEIGHT) low = mid;
+      const swung = offset.clone().applyAxisAngle(right, -mid);
+      if (pivot.y + swung.y < floorAt(swung)) low = mid;
       else high = mid;
     }
     offset.applyAxisAngle(right, -high);
+    floorSwingRad = high;
   }
 
   const position = pivot.clone().add(offset);
@@ -336,13 +407,15 @@ export function placeBoomCamera(
     correctPitch();
   }
 
-  return { position, quaternion };
+  // Reported for Ball Cam's orbit limit; swinging clear of the turf itself is expected.
+  return { position, quaternion, floorSwingRad: floorSwingRad * raised };
 }
 
 /**
  * How far Ball Cam swings the boom under the car (see `placeBoomCamera`) to keep the
  * ball no higher than `BALL_CAM_MAX_BALL_NDC` on screen. 0 while the view tilt alone
  * keeps it there, which covers balls close to the car and balls not far above it.
+ * `maxOrbitRad` is the most the boom can swing before the floor blocks it.
  */
 export function computeBallCamOrbit(
   pivot: THREE.Vector3,
@@ -352,7 +425,7 @@ export function computeBallCamOrbit(
   distanceMultiplier: number = 1,
   aspect: number = 16 / 9,
   viewPitchShare: number = 1
-): number {
+): { orbitRad: number; maxOrbitRad: number } {
   const tanHalfV = Math.tan((rlFovToThreeVerticalFov(settings.fov, aspect) * Math.PI) / 360);
   const limitRad = Math.atan(BALL_CAM_MAX_BALL_NDC * tanHalfV);
   const ballAngle = (orbitRad: number) => {
@@ -361,16 +434,32 @@ export function computeBallCamOrbit(
     return Math.atan2(local.y, -local.z);
   };
 
-  if (ballAngle(0) <= limitRad) return 0;
-  if (ballAngle(BALL_CAM_MAX_ORBIT_RAD) > limitRad) return BALL_CAM_MAX_ORBIT_RAD;
+  // Off the turf, stop swinging where even the shortest boom would hit the floor or the
+  // stadium barrier: past that the boom would have to swing back up, fighting the orbit.
+  let maxOrbit = BALL_CAM_MAX_ORBIT_RAD;
+  const blocked = (orbitRad: number) =>
+    placeBoomCamera(pivot, aim, settings, distanceMultiplier, aspect, viewPitchShare, orbitRad).floorSwingRad > 1e-3;
+  if (blocked(maxOrbit)) {
+    let free = 0;
+    let hit = maxOrbit;
+    for (let i = 0; i < 14; i++) {
+      const mid = (free + hit) / 2;
+      if (blocked(mid)) hit = mid;
+      else free = mid;
+    }
+    maxOrbit = free;
+  }
+
+  if (ballAngle(0) <= limitRad) return { orbitRad: 0, maxOrbitRad: maxOrbit };
+  if (ballAngle(maxOrbit) > limitRad) return { orbitRad: maxOrbit, maxOrbitRad: maxOrbit };
   let low = 0;
-  let high = BALL_CAM_MAX_ORBIT_RAD;
+  let high = maxOrbit;
   for (let i = 0; i < 14; i++) {
     const mid = (low + high) / 2;
     if (ballAngle(mid) > limitRad) low = mid;
     else high = mid;
   }
-  return high;
+  return { orbitRad: high, maxOrbitRad: maxOrbit };
 }
 
 /** How far `angle` lies outside [-limit, +limit], signed; 0 when inside. */

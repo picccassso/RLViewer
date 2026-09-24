@@ -132,10 +132,13 @@ export class PovCameraRig {
     // Ball Cam's upward aim tilts the view rather than swinging the boom under the car,
     // so the camera keeps its height behind the car on the turf and in the air. Only a
     // ball that would still sit too high on screen swings the boom under the car.
-    const targetOrbit = ballCamWeight > 0
-      ? ballCamWeight * computeBallCamOrbit(carPos, ballPos, this.aim, settings, this.distanceMultiplier, aspect, ballCamWeight)
-      : 0;
+    const orbit = ballCamWeight > 0
+      ? computeBallCamOrbit(carPos, ballPos, this.aim, settings, this.distanceMultiplier, aspect, ballCamWeight)
+      : { orbitRad: 0, maxOrbitRad: 0 };
+    const targetOrbit = ballCamWeight * orbit.orbitRad;
     this.orbit = snapped ? targetOrbit : this.orbit + (targetOrbit - this.orbit) * (1 - Math.exp(-rate * deltaTime));
+    // The floor blocks the swing at once rather than being eased into.
+    this.orbit = Math.min(this.orbit, ballCamWeight * orbit.maxOrbitRad);
     return placeBoomCamera(carPos, this.aim, settings, this.distanceMultiplier, aspect, ballCamWeight, this.orbit);
   }
 }

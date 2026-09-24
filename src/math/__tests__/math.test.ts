@@ -424,7 +424,7 @@ describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
     const ballPos = new THREE.Vector3(-420, 1865, 1238);
     const heading = ballPos.clone().sub(carPos).setY(0).normalize();
     const aim = computeBallCamAim(carPos, ballPos, heading).aim;
-    const orbit = computeBallCamOrbit(carPos, ballPos, aim, settings, 1, 16 / 9, BALL_CAM_SHARE);
+    const orbit = computeBallCamOrbit(carPos, ballPos, aim, settings, 1, 16 / 9, BALL_CAM_SHARE).orbitRad;
     const placed = placeBoomCamera(carPos, aim, settings, 1, 16 / 9, BALL_CAM_SHARE, orbit);
 
     expect(placed.position.y).toBeLessThan(carPos.y);
@@ -437,7 +437,32 @@ describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
     const roofCar = new THREE.Vector3(2750, 17, -1710);
     const roofBall = new THREE.Vector3(2728, 150, -1779);
     const roofAim = computeBallCamAim(roofCar, roofBall, roofBall.clone().sub(roofCar).setY(0).normalize()).aim;
-    expect(computeBallCamOrbit(roofCar, roofBall, roofAim, { ...settings, height: 90, angle: -4 }, 1, 16 / 9, BALL_CAM_SHARE)).toBe(0);
+    expect(computeBallCamOrbit(roofCar, roofBall, roofAim, { ...settings, height: 90, angle: -4 }, 1, 16 / 9, BALL_CAM_SHARE).orbitRad).toBe(0);
+  });
+
+  it('pulls the camera in against the stadium barrier for a car low on a wall with the ball overhead', () => {
+    // Sample replay at 2:31: Kiileerrz low on the +X side wall, the ball ~1000 uu above.
+    // In the broadcast the camera sits just outside the glass, ~120 uu from the car,
+    // looking steeply up with the car at its usual spot.
+    const settings = { ...DEFAULT_CAMERA_SETTINGS, height: 100, angle: -5, stiffness: 0.4 };
+    const carPos = new THREE.Vector3(4076, 248, -2505);
+    const ballPos = new THREE.Vector3(3965, 1260, -2438);
+    const heading = new THREE.Vector3(0, 0, 1);
+    const aim = computeBallCamAim(carPos, ballPos, heading).aim;
+    const { orbitRad } = computeBallCamOrbit(carPos, ballPos, aim, settings, 1, 16 / 9, BALL_CAM_SHARE);
+    const placed = placeBoomCamera(carPos, aim, settings, 1, 16 / 9, BALL_CAM_SHARE, orbitRad);
+
+    const distance = placed.position.distanceTo(carPos);
+    expect(distance).toBeGreaterThan(80);
+    expect(distance).toBeLessThan(180);
+    expect(placed.position.x).toBeGreaterThan(4096); // Outside the glass
+    expect(Math.abs(projectWith(placed, carPos).y)).toBeLessThanOrEqual(CAR_FRAMING_LIMIT_NDC + 1e-6);
+    expect(projectWith(placed, ballPos).y).toBeLessThan(1);
+
+    // A car driving on the turf beside the wall keeps its full boom through the wall
+    const onTurf = new THREE.Vector3(4000, 17, 0);
+    const turfPlaced = placeBoomCamera(onTurf, lookRotation(new THREE.Vector3(-1, 0, 0), WORLD_UP), settings);
+    expect(turfPlaced.position.distanceTo(onTurf)).toBeCloseTo(Math.hypot(settings.distance, settings.height), 3);
   });
 
   it('keeps the horizon level while Ball Cam turns and pitches up at once', () => {
