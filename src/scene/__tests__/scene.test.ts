@@ -535,15 +535,17 @@ describe('Scene Graph & Manager Integrity Verification', () => {
     boostPads.initPads(mockPads);
     expect(() => scene.updateMatrixWorld(true)).not.toThrow();
     const padBatches = scene.children[0].children as THREE.InstancedMesh[];
-    expect(padBatches).toHaveLength(6);
-    expect(padBatches.map((batch) => batch.count)).toEqual([6, 6, 0, 28, 28, 0]);
+    // 9 layers for Big pads (base, activeHazard, inactiveHazard, activeDisc, inactiveDisc, core, aura, ring1, ring2)
+    // 4 layers for Small pads (base, activeDisc, inactiveDisc, activeChevron)
+    expect(padBatches).toHaveLength(13);
+    expect(padBatches.map((batch) => batch.count)).toEqual([6, 6, 0, 6, 0, 6, 6, 6, 6, 28, 28, 0, 28]);
     const firstPadMatrix = new THREE.Matrix4();
     padBatches[0].getMatrixAt(0, firstPadMatrix);
     expect(firstPadMatrix.elements[12]).toBe(mockPads[0].position.x);
     expect(firstPadMatrix.elements[13]).toBe(4);
     expect(firstPadMatrix.elements[14]).toBe(mockPads[0].position.z);
     const firstOrbMatrix = new THREE.Matrix4();
-    padBatches[1].getMatrixAt(0, firstOrbMatrix);
+    padBatches[5].getMatrixAt(0, firstOrbMatrix);
     expect(firstOrbMatrix.elements[13]).toBeGreaterThanOrEqual(64);
     expect(firstOrbMatrix.elements[13]).toBeLessThanOrEqual(76);
     let localLights = 0;
@@ -554,7 +556,7 @@ describe('Scene Graph & Manager Integrity Verification', () => {
 
     const availability = Array.from({ length: 34 }, (_, i) => i % 2 === 0);
     boostPads.updateStates(availability, 0.016);
-    expect(padBatches.map((batch) => batch.count)).toEqual([6, 3, 3, 28, 14, 14]);
+    expect(padBatches.map((batch) => batch.count)).toEqual([6, 3, 3, 3, 3, 3, 3, 3, 3, 28, 14, 14, 14]);
     expect(() => scene.updateMatrixWorld(true)).not.toThrow();
 
     boostPads.dispose();
