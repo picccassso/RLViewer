@@ -10,6 +10,17 @@ import { CarManager } from './CarManager';
 import { CameraSuite, CameraMode } from '../camera/CameraSuite';
 import { CameraSettings } from '../math/cameraMath';
 
+/**
+ * Playback draws at most ~60 fps: replays are recorded at ~30 Hz and interpolated, so faster
+ * screens only burn power. A frame is drawn once 80% of a 60 fps interval has passed, which
+ * gives 120 Hz screens every other refresh without dropping 144 Hz screens to 48 fps.
+ */
+const MIN_FRAME_MS = (1000 / 60) * 0.8;
+/** How long a paused replay keeps drawing after something changes, so camera smoothing settles. */
+const PAUSED_SETTLE_MS = 2000;
+/** Retina screens render at 1.5x and are upscaled: slightly softer, ~45% fewer pixels to shade. */
+const MAX_PIXEL_RATIO = 1.5;
+
 interface ReplayVisualizerCanvasProps {
   replayData: ParsedReplayData | null;
   currentTime: number;
@@ -47,6 +58,8 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const lastHudUpdateRef = useRef<number>(0);
   const appliedSeekRef = useRef<{ time: number; id: number } | null>(null);
+  // Keeps a paused replay drawing for a moment after a change; set by the render loop.
+  const wakeRef = useRef<() => void>(() => {});
 
   // References to three.js scene managers
   const managersRef = useRef<{
@@ -76,9 +89,9 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       canvas,
       // Anti-aliasing happens in the post-processing scene target; the canvas only gets a fullscreen quad.
       antialias: false,
-      powerPreference: 'high-performance',
+      // No 'high-performance': on dual-GPU laptops it forces the hot discrete GPU on.
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
     renderer.setSize(width, height);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
@@ -91,6 +104,9 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
 
     // 3. Subsystem Managers
     const cameraSuite = new CameraSuite(canvas, width / height);
+    // Free camera drags and their damping redraw a paused replay.
+    const wakeOnCameraChange = () => wakeRef.current();
+    cameraSuite.controls.addEventListener('change', wakeOnCameraChange);
     (window as any).__TMP_DEBUG = { scene, renderer, cameraSuite, postProcessing };
     const stadium = new StadiumManager(scene);
     stadium.initEnvironment(renderer);
@@ -119,11 +135,13 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       managersRef.current.renderer.setSize(newW, newH);
       managersRef.current.postProcessing.setSize(newW, newH);
       managersRef.current.cameraSuite.handleResize(newW, newH);
+      wakeRef.current();
     };
     window.addEventListener('resize', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      cameraSuite.controls.removeEventListener('change', wakeOnCameraChange);
       cameraSuite.dispose();
       stadium.dispose();
       boostPads.dispose();
@@ -157,10 +175,12 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     // null means reproduce the selected player's recorded Ball Cam changes.
     cameraSuite.setBallCam(ballCamOverride);
     cameraSuite.applySettings(cameraSettings);
+    wakeRef.current();
   }, [cameraMode, activePlayerIndex, ballCamOverride, cameraSettings]);
 
   useEffect(() => {
     managersRef.current?.cars.setNameplatesVisible(showHud);
+    wakeRef.current();
   }, [showHud]);
 
   // Apply explicit user seek actions (timeline scrubbing, clicking event marks, frame stepping).
@@ -193,15 +213,21 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
 
       onTimeUpdate(seekTarget.time, frameState.frameIndex, frameState);
     }
+    wakeRef.current();
   }, [seekTarget, isPlaying, replayData, cameraMode, activePlayerIndex, onTimeUpdate]);
 
-  // Render & Playback Loop
+  // Render & Playback Loop. While paused the loop stops entirely once the picture has
+  // settled, and wakeRef restarts it when something changes.
   useEffect(() => {
-    let animId: number;
+    let animId = 0;
+    let awakeUntil = 0;
 
     const renderLoop = (now: number) => {
-      animId = requestAnimationFrame(renderLoop);
+      animId = 0;
       if (!managersRef.current || !replayData) return;
+      if (!isPlaying && now > awakeUntil) return;
+      animId = requestAnimationFrame(renderLoop);
+      if (now - managersRef.current.lastTime < MIN_FRAME_MS) return;
 
       const { postProcessing, scene, stadium, cameraSuite, boostPads, ball, cars } = managersRef.current;
       const delta = Math.min((now - managersRef.current.lastTime) / 1000, 0.1);
@@ -243,8 +269,19 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       }
     };
 
-    animId = requestAnimationFrame(renderLoop);
-    return () => cancelAnimationFrame(animId);
+    const wake = () => {
+      awakeUntil = performance.now() + PAUSED_SETTLE_MS;
+      if (animId) return;
+      // Measure the first frame from now, not from whenever the loop last stopped.
+      if (managersRef.current) managersRef.current.lastTime = performance.now() - MIN_FRAME_MS;
+      animId = requestAnimationFrame(renderLoop);
+    };
+    wakeRef.current = wake;
+    wake();
+    return () => {
+      cancelAnimationFrame(animId);
+      wakeRef.current = () => {};
+    };
   }, [replayData, isPlaying, playbackSpeed, cameraMode, activePlayerIndex, onTimeUpdate]);
 
   // Keyboard Shortcuts
