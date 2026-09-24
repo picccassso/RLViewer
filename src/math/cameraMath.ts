@@ -159,21 +159,34 @@ export function trackCarHeading(
 
 /**
  * How strongly the Car Cam should align to the driving surface: 0 on the turf or in
- * the air, 1 when driving on a wall or the ceiling.
+ * the air, 1 when driving on a wall or the ceiling. The car must be close to the
+ * nearest wall or ceiling with its wheels towards it, so a car tumbling in the air
+ * just off a wall (after jumping off it, say) keeps a level camera.
  */
 export function getSurfaceAlignment(carPosition: THREE.Vector3, carQuaternion: THREE.Quaternion): number {
   const up = new THREE.Vector3(0, 1, 0).applyQuaternion(carQuaternion);
   const tilt = Math.min(Math.max((0.9 - up.y) / 0.5, 0), 1);
   if (tilt === 0) return 0;
 
-  const toSurface = Math.max(0, Math.min(
-    ARENA_HALF_WIDTH - Math.abs(carPosition.x),
-    ARENA_HALF_LENGTH - Math.abs(carPosition.z),
-    ARENA_CEILING - carPosition.y,
-    (ARENA_CORNER - Math.abs(carPosition.x) - Math.abs(carPosition.z)) / Math.SQRT2
-  ));
+  // Nearest wall or ceiling, and the normal pointing back into the arena
+  const { x, y, z } = carPosition;
+  const sx = Math.sign(x) || 1;
+  const sz = Math.sign(z) || 1;
+  const surfaces: Array<[number, number, number, number]> = [
+    [ARENA_HALF_WIDTH - Math.abs(x), -sx, 0, 0],
+    [ARENA_HALF_LENGTH - Math.abs(z), 0, 0, -sz],
+    [ARENA_CEILING - y, 0, -1, 0],
+    [(ARENA_CORNER - Math.abs(x) - Math.abs(z)) / Math.SQRT2, -sx * Math.SQRT1_2, 0, -sz * Math.SQRT1_2],
+  ];
+  let nearest = surfaces[0];
+  for (const surface of surfaces) if (surface[0] < nearest[0]) nearest = surface;
+  const [distance, nx, ny, nz] = nearest;
+
+  const toSurface = Math.max(0, distance);
   const nearSurface = 1 - Math.min(Math.max((toSurface - 150) / 250, 0), 1);
-  return tilt * nearSurface;
+  const wheelsOnSurface = up.x * nx + up.y * ny + up.z * nz;
+  const facing = Math.min(Math.max((wheelsOnSurface - 0.5) / 0.35, 0), 1);
+  return tilt * nearSurface * facing;
 }
 
 /**

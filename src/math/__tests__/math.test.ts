@@ -215,6 +215,23 @@ describe('2. Car Cam Boom Rig', () => {
     expect(Math.abs(ndc.y)).toBeLessThanOrEqual(0.8 + 1e-6);
   });
 
+  it('keeps the Car Cam level for a car tumbling in the air just off a wall', () => {
+    // Sample replay at 4:51: reveal jumps off the +X side wall and flips upside down.
+    // Still close to the wall, but with the wheels no longer facing it.
+    const carPos = new THREE.Vector3(3910, 438, -1381);
+    const up = new THREE.Vector3(-0.32, -0.93, -0.19).normalize();
+    const forward = new THREE.Vector3(0, 0, -1).projectOnPlane(up).normalize();
+    const carQuat = new THREE.Quaternion().setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(forward, up, forward.clone().cross(up))
+    );
+    expect(getSurfaceAlignment(carPos, carQuat)).toBe(0);
+    expect(Math.abs(rollDegOf(carCam(carPos, carQuat).quaternion))).toBeLessThan(0.01);
+
+    // Upside down on the ceiling still aligns
+    const onCeiling = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI);
+    expect(getSurfaceAlignment(new THREE.Vector3(0, 2000, 0), onCeiling)).toBe(1);
+  });
+
   it('turns towards the target at the same pace regardless of frame rate', () => {
     const target = new THREE.Quaternion().setFromAxisAngle(WORLD_UP, THREE.MathUtils.degToRad(60));
     const at60 = new THREE.Quaternion();
