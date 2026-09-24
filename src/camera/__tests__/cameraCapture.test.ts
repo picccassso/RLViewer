@@ -99,7 +99,7 @@ describe('Camera capture: parsing', () => {
       '# replay_id=ABC123',
       '# map=stadium_p',
       CSV_HEADER,
-      '0.0000,10,1.5000,100,-200,300,-500,16384,0,110,CameraState_BallCam_TA,Picasso,10,20,17,0,0,93,110,100,-3,270,0.45,1.3,1920,1080',
+      '0.0000,10,1.5000,100,-200,300,-500,16384,0,110,CameraState_BallCam_TA,Player,10,20,17,0,0,93,110,100,-3,270,0.45,1.3,1920,1080',
     ].join('\n');
     const capture = parseCameraCapture(text);
     expect(capture.meta.format).toBe('rlv-camera-capture v1');
@@ -153,8 +153,8 @@ describe('Camera capture: comparison pipeline', () => {
   }
 
   it('recovers the clock offset and reports zero error for a capture of our own camera', () => {
-    // Picasso's air dribble off the side wall, around 03:48
-    const capture = parseCameraCapture(syntheticCapture('Picasso', 222, 232, 3.2));
+    // Ten seconds of open play, around 03:42
+    const capture = parseCameraCapture(syntheticCapture('Kiileerrz', 222, 232, 3.2));
     const comparison = compareWithCapture(replayData, capture);
 
     expect(comparison.offset).toBeCloseTo(3.2, 2);

@@ -319,7 +319,7 @@ describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
   });
 
   it('keeps the camera level behind the car for an air dribble instead of swinging underneath', () => {
-    // Air dribble off the side wall (sample replay, Picasso, frames 6151-6190)
+    // Air dribble off the side wall, positions taken from a real replay
     const settings = { ...DEFAULT_CAMERA_SETTINGS, height: 90, angle: -5 };
     const heading = new THREE.Vector3(0, 0, -1);
     const dribble: Array<[THREE.Vector3, THREE.Vector3]> = [

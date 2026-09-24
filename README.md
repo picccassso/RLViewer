@@ -48,7 +48,7 @@ Most replay visualizers require an account, upload your files to a remote server
 
 4. Open the link shown in your terminal (usually `http://localhost:3000` or `http://localhost:5173`).
 
-A sample replay is loaded automatically on launch. To watch your own match, drag and drop any `.replay` file anywhere onto the window.
+On launch you're asked for a replay: choose a `.replay` file, drag and drop one anywhere onto the window, or watch the bundled sample match.
 
 ## Testing and Building
 
