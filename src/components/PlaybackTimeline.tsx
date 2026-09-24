@@ -2,12 +2,15 @@ import React, { useRef, useState } from 'react';
 import {
   Play,
   Pause,
-  RotateCcw,
-  RotateCw,
+  ArrowLeft,
+  ArrowRight,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
 import { ReplayTickMark } from '../types/replay';
+
+/** How far the skip buttons jump, like the skip in Rocket League's replay viewer. */
+const SKIP_SECONDS = 5;
 
 interface PlaybackTimelineProps {
   currentTime: number;
@@ -148,11 +151,13 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
         <div className="flex items-center gap-1.5 md:gap-2">
           {/* Step Back 1s */}
           <button
-            onClick={() => onSeekTime(Math.max(0, currentTime - 1.0))}
-            className="ui-button p-1.5"
-            title="Step Back 1s"
+            onClick={() => onSeekTime(Math.max(0, currentTime - SKIP_SECONDS))}
+            className="ui-button flex items-center gap-0.5 px-1.5 py-1.5 text-[10px] font-medium tabular-nums"
+            title={`Back ${SKIP_SECONDS} seconds`}
+            aria-label={`Back ${SKIP_SECONDS} seconds`}
           >
-            <RotateCcw size={15} />
+            <ArrowLeft size={14} />
+            <span>{SKIP_SECONDS}s</span>
           </button>
 
           {/* Step Back 1 Frame */}
@@ -184,11 +189,13 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
 
           {/* Step Forward 1s */}
           <button
-            onClick={() => onSeekTime(Math.min(duration, currentTime + 1.0))}
-            className="ui-button p-1.5"
-            title="Step Forward 1s"
+            onClick={() => onSeekTime(Math.min(duration, currentTime + SKIP_SECONDS))}
+            className="ui-button flex items-center gap-0.5 px-1.5 py-1.5 text-[10px] font-medium tabular-nums"
+            title={`Forward ${SKIP_SECONDS} seconds`}
+            aria-label={`Forward ${SKIP_SECONDS} seconds`}
           >
-            <RotateCw size={15} />
+            <span>{SKIP_SECONDS}s</span>
+            <ArrowRight size={14} />
           </button>
         </div>
 

@@ -1,5 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UploadCloud, FileCode, Play, Loader2, EyeOff } from 'lucide-react';
+import { UploadCloud, FileCode, Play, Loader2, Eye, EyeOff } from 'lucide-react';
+
+/** How long the show-interface button stays up after the mouse stops moving. */
+const REVEAL_IDLE_MS = 2500;
 
 interface DropZoneOverlayProps {
   isLoading: boolean;
@@ -10,6 +13,9 @@ interface DropZoneOverlayProps {
   /** Nothing is open yet: ask for a replay. */
   showStartPrompt: boolean;
   onHideHud: () => void;
+  /** Offer a way back while the interface is hidden. */
+  showRevealButton: boolean;
+  onShowHud: () => void;
 }
 
 export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
@@ -20,9 +26,35 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
   showControls,
   showStartPrompt,
   onHideHud,
+  showRevealButton,
+  onShowHud,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [isRevealAwake, setIsRevealAwake] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const revealHoveredRef = useRef(false);
+
+  // With the interface hidden, the show button appears while the mouse moves and fades
+  // away once it rests, so it stays out of clean recordings.
+  useEffect(() => {
+    if (!showRevealButton) return;
+    let timer = 0;
+    const wake = () => {
+      setIsRevealAwake(true);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (!revealHoveredRef.current) setIsRevealAwake(false);
+      }, REVEAL_IDLE_MS);
+    };
+    wake();
+    window.addEventListener('pointermove', wake);
+    window.addEventListener('pointerdown', wake);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('pointermove', wake);
+      window.removeEventListener('pointerdown', wake);
+    };
+  }, [showRevealButton]);
 
   useEffect(() => {
     let dragCounter = 0;
@@ -191,6 +223,22 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
             <EyeOff size={13} />
           </button>
         </div>
+      )}
+
+      {showRevealButton && (
+        <button
+          onClick={onShowHud}
+          onMouseEnter={() => { revealHoveredRef.current = true; }}
+          onMouseLeave={() => { revealHoveredRef.current = false; }}
+          className={`fixed top-3 right-3 z-30 ui-button flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium transition-opacity duration-300 ${
+            isRevealAwake ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+          title="Show interface (H)"
+        >
+          <Eye size={13} />
+          <span>Show interface</span>
+          <kbd className="ml-0.5 rounded border border-white/15 px-1 font-mono text-[10px] text-slate-400">H</kbd>
+        </button>
       )}
     </>
   );

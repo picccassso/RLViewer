@@ -208,6 +208,8 @@ export const App: React.FC = () => {
         showControls={isHudVisible && replayData !== null}
         showStartPrompt={replayData === null && !isLoading}
         onHideHud={() => setIsHudVisible(false)}
+        showRevealButton={!isHudVisible && replayData !== null}
+        onShowHud={() => setIsHudVisible(true)}
       />
 
       {isHudVisible && replayData && (
