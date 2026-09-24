@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { ParsedReplayData, FrameState } from '../types/replay';
 import { getFrameSampleAtTime, unpackFrame } from '../math/frameUnpacker';
 import { StadiumManager } from './StadiumManager';
@@ -65,6 +66,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
   const managersRef = useRef<{
     renderer: THREE.WebGLRenderer;
     postProcessing: PostProcessing;
+    labelRenderer: CSS2DRenderer;
     scene: THREE.Scene;
     stadium: StadiumManager;
     boostPads: BoostPadManager;
@@ -98,6 +100,11 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     const postProcessing = new PostProcessing(renderer, width, height);
+    // Player nameplates are HTML laid over the canvas, under the HUD panels.
+    const labelRenderer = new CSS2DRenderer();
+    labelRenderer.setSize(width, height);
+    Object.assign(labelRenderer.domElement.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: '0' });
+    container.appendChild(labelRenderer.domElement);
 
     // 2. Scene
     const scene = new THREE.Scene();
@@ -117,6 +124,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     managersRef.current = {
       renderer,
       postProcessing,
+      labelRenderer,
       scene,
       stadium,
       boostPads,
@@ -134,6 +142,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       const newH = container.clientHeight;
       managersRef.current.renderer.setSize(newW, newH);
       managersRef.current.postProcessing.setSize(newW, newH);
+      managersRef.current.labelRenderer.setSize(newW, newH);
       managersRef.current.cameraSuite.handleResize(newW, newH);
       wakeRef.current();
     };
@@ -148,6 +157,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       ball.dispose();
       cars.dispose();
       postProcessing.dispose();
+      labelRenderer.domElement.remove();
       renderer.dispose();
       managersRef.current = null;
     };
@@ -199,7 +209,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
 
     // When paused, immediately unpack and render the target frame for snappy feedback
     if (!isPlaying && replayData) {
-      const { postProcessing, scene, stadium, cameraSuite, boostPads, ball, cars } = managersRef.current;
+      const { postProcessing, labelRenderer, scene, stadium, cameraSuite, boostPads, ball, cars } = managersRef.current;
       const { frameA, frameB, alpha } = getFrameSampleAtTime(replayData, seekTarget.time);
 
       const frameState = unpackFrame(replayData, frameA, frameB, alpha);
@@ -210,6 +220,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       cameraSuite.update(frameState, 0.016);
       stadium.setSightline(cameraSuite.camera.position, cameraSuite.followTarget);
       postProcessing.render(scene, cameraSuite.camera);
+      labelRenderer.render(scene, cameraSuite.camera);
 
       onTimeUpdate(seekTarget.time, frameState.frameIndex, frameState);
     }
@@ -229,7 +240,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       animId = requestAnimationFrame(renderLoop);
       if (now - managersRef.current.lastTime < MIN_FRAME_MS) return;
 
-      const { postProcessing, scene, stadium, cameraSuite, boostPads, ball, cars } = managersRef.current;
+      const { postProcessing, labelRenderer, scene, stadium, cameraSuite, boostPads, ball, cars } = managersRef.current;
       const delta = Math.min((now - managersRef.current.lastTime) / 1000, 0.1);
       managersRef.current.lastTime = now;
 
@@ -259,6 +270,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
 
       // Render
       postProcessing.render(scene, cameraSuite.camera);
+      labelRenderer.render(scene, cameraSuite.camera);
 
       // Callback to React HUD throttled to ~30 FPS during playback
       // to keep the Three.js 60-144 FPS render loop buttery smooth

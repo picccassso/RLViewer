@@ -30,6 +30,20 @@ body {
   .ui-button-active {
     @apply border-white/20 bg-slate-800 text-white;
   }
+
+  /* Player names over the 3D view, placed by CSS2DRenderer. */
+  .nameplate {
+    @apply whitespace-nowrap rounded border-l-[3px] bg-slate-950/80 px-2 py-0.5 text-[15px] font-bold leading-tight text-white;
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
+  }
+
+  .nameplate-blue {
+    @apply border-blue-500;
+  }
+
+  .nameplate-orange {
+    @apply border-orange-500;
+  }
 }
 
 /* Custom scrollbars */

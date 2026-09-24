@@ -548,24 +548,24 @@ describe('Scene Graph & Manager Integrity Verification', () => {
     expect(scene.children.length).toBe(0);
   });
 
-  it('CarManager: does not upload nameplate textures during playback', () => {
+  it('CarManager: keeps nameplates straight above their cars however the car is rotated', () => {
     const scene = new THREE.Scene();
     const cars = new CarManager(scene);
-    const players = createMockPlayers();
-    cars.initCars(players);
+    cars.initCars(createMockPlayers());
 
     const frameState = createMockFrameState();
-    const carEntity = (cars as any).carEntities.get(0);
-    expect(carEntity).toBeDefined();
-    const initialVersion = carEntity.nameplate.material.map.version;
-
-    frameState.players[0].boost = 50.2;
+    const car = frameState.players[0];
+    // Upside down, e.g. driving on the ceiling or mid-flip
+    car.rotation = { x: 1, y: 0, z: 0, w: 0 };
     cars.updateCars(frameState);
-    expect(carEntity.nameplate.material.map.version).toBe(initialVersion);
 
-    frameState.players[0].boost = 49.1;
-    cars.updateCars(frameState);
-    expect(carEntity.nameplate.material.map.version).toBe(initialVersion);
+    const nameplate = (cars as any).carEntities.get(0).nameplate as THREE.Object3D;
+    expect(nameplate.parent).not.toBe(cars.getCarObject(0));
+    nameplate.updateWorldMatrix(true, false);
+    const world = new THREE.Vector3().setFromMatrixPosition(nameplate.matrixWorld);
+    expect(world.x).toBeCloseTo(car.position.x);
+    expect(world.z).toBeCloseTo(car.position.z);
+    expect(world.y).toBeGreaterThan(car.position.y + 50);
 
     cars.dispose();
   });
@@ -575,19 +575,16 @@ describe('Scene Graph & Manager Integrity Verification', () => {
     const cars = new CarManager(scene);
     const players = createMockPlayers();
     cars.initCars(players);
+    const nameplateOf = (index: number) => (cars as any).carEntities.get(index).nameplate as THREE.Object3D;
 
     cars.setNameplatesVisible(false);
     for (const player of players) {
-      const car = cars.getCarObject(player.index);
-      const nameplate = car?.children.find((child) => child instanceof THREE.Sprite);
-      expect(nameplate?.visible).toBe(false);
+      expect(nameplateOf(player.index).visible).toBe(false);
     }
 
     cars.setNameplatesVisible(true);
     for (const player of players) {
-      const car = cars.getCarObject(player.index);
-      const nameplate = car?.children.find((child) => child instanceof THREE.Sprite);
-      expect(nameplate?.visible).toBe(true);
+      expect(nameplateOf(player.index).visible).toBe(true);
     }
 
     cars.dispose();
@@ -604,13 +601,11 @@ describe('Scene Graph & Manager Integrity Verification', () => {
     // Following player 0 in POV:
     cars.updateCars(frameState, 0);
 
-    const car0 = cars.getCarObject(0);
-    const nameplate0 = car0?.children.find((child) => child instanceof THREE.Sprite);
+    const nameplate0 = (cars as any).carEntities.get(0).nameplate as THREE.Object3D;
     // Player 0 nameplate must be hidden so it doesn't block the camera view
     expect(nameplate0?.visible).toBe(false);
 
-    const car1 = cars.getCarObject(1);
-    const nameplate1 = car1?.children.find((child) => child instanceof THREE.Sprite);
+    const nameplate1 = (cars as any).carEntities.get(1).nameplate as THREE.Object3D;
     // Player 1 nameplate must remain visible
     expect(nameplate1?.visible).toBe(true);
 

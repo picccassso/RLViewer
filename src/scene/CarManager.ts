@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { PlayerInfo, FrameState } from '../types/replay';
 
 // Octane Hitbox: 118.01 length (X), 36.16 height (Y), 84.20 width (Z)
@@ -13,12 +14,30 @@ export const HITBOX_DIMENSIONS: Record<string, { length: number; width: number; 
   Merc: { length: 120.72, width: 76.05, height: 41.66 },
 };
 
+/** Height of a nameplate's bottom edge above the car, straight up in world space. */
+const NAMEPLATE_HEIGHT = 110;
+
+/**
+ * Player name label, drawn by the browser over the 3D view (see CSS2DRenderer in the canvas)
+ * so it stays crisp and the same readable size at any distance.
+ */
+function createNameplate(info: PlayerInfo): THREE.Object3D {
+  // Without a DOM (unit tests) there is nothing to draw; a bare anchor keeps the placement testable.
+  if (typeof document === 'undefined') return new THREE.Object3D();
+  const element = document.createElement('div');
+  element.className = info.team === 0 ? 'nameplate nameplate-blue' : 'nameplate nameplate-orange';
+  element.textContent = info.name;
+  const nameplate = new CSS2DObject(element);
+  nameplate.center.set(0.5, 1); // anchored at its bottom centre
+  return nameplate;
+}
+
 interface CarEntity {
   info: PlayerInfo;
   group: THREE.Group;
   carMesh: THREE.Object3D;
-  nameplate: THREE.Sprite;
-  nameplateCanvas: HTMLCanvasElement;
+  /** Lives in world space, not under the car, so it stays above the car however the car rolls. */
+  nameplate: THREE.Object3D;
   boostFlame: THREE.Mesh;
   hitboxWireframe: THREE.LineSegments;
   isModelLoaded: boolean;
@@ -135,38 +154,22 @@ export class CarManager {
       boostFlame.visible = false;
       carGroup.add(boostFlame);
 
-      // 2. Floating 3D nameplate. Draw it once to avoid uploading a canvas texture every frame.
-      const nameplateCanvas =
-        typeof document !== 'undefined'
-          ? document.createElement('canvas')
-          : ({ width: 512, height: 128, getContext: () => null } as unknown as HTMLCanvasElement);
-      nameplateCanvas.width = 512;
-      nameplateCanvas.height = 128;
-      const nameplateTexture = new THREE.CanvasTexture(nameplateCanvas);
-      const nameplateMat = new THREE.SpriteMaterial({
-        map: nameplateTexture,
-        transparent: true,
-        depthTest: false,
-      });
-      const nameplate = new THREE.Sprite(nameplateMat);
-      nameplate.scale.set(160, 40, 1);
-      nameplate.position.set(0, hitbox.height + 75, 0);
+      // 2. Nameplate
+      const nameplate = createNameplate(player);
       nameplate.visible = this.nameplatesVisible;
-      carGroup.add(nameplate);
+      this.carsGroup.add(nameplate);
 
       const entity: CarEntity = {
         info: player,
         group: carGroup,
         carMesh: fallbackCar,
         nameplate,
-        nameplateCanvas,
         boostFlame,
         hitboxWireframe,
         isModelLoaded: false,
       };
 
       this.carEntities.set(player.index, entity);
-      this.drawNameplate(entity, player);
 
       // Async load real GLB model for this car
       this.loadGLBCarModel(player, entity, fallbackCar, cabin);
@@ -326,14 +329,14 @@ export class CarManager {
 
       // Visibility: hidden if absent or demoed
       entity.group.visible = isPresent && !isDemoed;
-      if (!entity.group.visible) continue;
-
       // Hide nameplate for the followed POV player so it doesn't obstruct camera view
       const isPovTarget = activePovPlayerIndex !== null && playerState.info.index === activePovPlayerIndex;
-      entity.nameplate.visible = this.nameplatesVisible && !isPovTarget;
+      entity.nameplate.visible = entity.group.visible && this.nameplatesVisible && !isPovTarget;
+      if (!entity.group.visible) continue;
 
       // Position and Rotation
       entity.group.position.set(position.x, position.y, position.z);
+      entity.nameplate.position.set(position.x, position.y + NAMEPLATE_HEIGHT, position.z);
       entity.group.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
 
       if (this.groundShadows && position.y < 500) {
@@ -356,42 +359,6 @@ export class CarManager {
       this.groundShadows.count = shadowCount;
       if (shadowCount) this.groundShadows.instanceMatrix.needsUpdate = true;
     }
-  }
-
-  private drawNameplate(entity: CarEntity, info: PlayerInfo) {
-    const canvas = entity.nameplateCanvas;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, 512, 128);
-
-    const isBlue = info.team === 0;
-    const teamBadgeColor = isBlue ? '#0088ff' : '#ff6600';
-    const bgColor = 'rgba(10, 15, 26, 0.85)';
-
-    // Rounded background pill
-    ctx.fillStyle = bgColor;
-    ctx.beginPath();
-    ctx.roundRect(16, 16, 480, 96, 24);
-    ctx.fill();
-
-    // Border
-    ctx.strokeStyle = teamBadgeColor;
-    ctx.lineWidth = 4;
-    ctx.stroke();
-
-    // Team color bar
-    ctx.fillStyle = teamBadgeColor;
-    ctx.beginPath();
-    ctx.roundRect(24, 24, 16, 80, 8);
-    ctx.fill();
-
-    // Player Name
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px Rajdhani, sans-serif';
-    ctx.fillText(info.name, 56, 62);
-
-    entity.nameplate.material.map!.needsUpdate = true;
   }
 
   public getCarObject(playerIndex: number): THREE.Object3D | null {
@@ -422,8 +389,7 @@ export class CarManager {
     }
     this.carEntities.forEach((c) => {
       this.carsGroup.remove(c.group);
-      c.nameplate.material.dispose();
-      c.nameplate.material.map?.dispose();
+      this.carsGroup.remove(c.nameplate); // also takes its element out of the page
     });
     this.carEntities.clear();
   }
