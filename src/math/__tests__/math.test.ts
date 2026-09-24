@@ -13,6 +13,7 @@ import {
   BALL_CAM_AIR_VIEW_PITCH_SHARE,
   CAMERA_MIN_HEIGHT,
   CAR_FRAMING_LIMIT_NDC,
+  CAR_MAX_DROP_DEG,
   computeBallCamAim,
   computeCarCamAim,
   DEFAULT_CAMERA_SETTINGS,
@@ -363,6 +364,28 @@ describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
 
     expect(placed.position.y).toBeGreaterThan(carPos.y);
     expect(projectWith(placed, carPos).y).toBeLessThan(0);
+  });
+
+  it('keeps the car near its usual spot for a high ball and lets the ball ride up the frame', () => {
+    const heading = new THREE.Vector3(0, 0, -1);
+    const cases = [
+      [new THREE.Vector3(0, 17, 0), BALL_CAM_VIEW_PITCH_SHARE],
+      [new THREE.Vector3(0, 600, 0), BALL_CAM_AIR_VIEW_PITCH_SHARE],
+    ] as const;
+    for (const [carPos, share] of cases) {
+      const usual = placeBoomCamera(carPos, lookRotation(heading, WORLD_UP), DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, share);
+      const usualCarY = projectWith(usual, carPos).y;
+
+      const ballPos = new THREE.Vector3(0, carPos.y + 1500, -800);
+      const ballCam = computeBallCamAim(carPos, ballPos, heading);
+      const placed = placeBoomCamera(carPos, ballCam.aim, DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, share);
+      const tanHalfV = Math.tan((V_FOV_16_9 * Math.PI) / 360);
+      const dropDeg = THREE.MathUtils.radToDeg(
+        Math.atan(usualCarY * tanHalfV) - Math.atan(projectWith(placed, carPos).y * tanHalfV)
+      );
+      expect(dropDeg).toBeLessThanOrEqual(CAR_MAX_DROP_DEG + 1e-3);
+      expect(projectWith(placed, ballPos).y).toBeGreaterThan(0.2);
+    }
   });
 
   it('keeps the horizon level while Ball Cam turns and pitches up at once', () => {

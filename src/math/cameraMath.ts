@@ -42,6 +42,13 @@ export const BALL_CAM_AIR_VIEW_PITCH_SHARE = 0.35;
 /** The followed car is kept within this fraction of the half-FOV. */
 export const CAR_FRAMING_LIMIT_NDC = 0.8;
 
+/**
+ * How far the car may sink on screen below its usual spot, in degrees of view. Like
+ * Rocket League, Ball Cam stops pitching up at this point and lets a high ball ride up
+ * the frame (or leave the top) instead of pushing the car down.
+ */
+export const CAR_MAX_DROP_DEG = 3;
+
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
@@ -235,8 +242,9 @@ export function computeBallCamAim(
  * and looks along the aim tilted by `angle`. Because the camera is derived from the
  * car's current position, the car holds a fixed screen position however the aim is
  * smoothed. `viewPitchShare` of an upward aim tilts the view instead of the boom,
- * lowering the car on screen. The boom swings up to stay above the turf, and the view
- * turns just enough to keep the car on screen.
+ * lowering the car on screen, but never more than `CAR_MAX_DROP_DEG` below its usual
+ * spot: past that a high ball rides up the frame instead. The boom swings up to stay
+ * above the turf, and the view turns just enough to keep the car on screen.
  *
  * Like Rocket League, the boom never shortens against the arena: the camera passes
  * through walls and the ceiling (which are see-through from outside), so the car keeps
@@ -282,10 +290,14 @@ export function placeBoomCamera(
   );
 
   // Framing guarantee: when the turf swings the camera off the aim, turn the view just
-  // enough to keep the car inside the frame limits.
+  // enough to keep the car inside the frame limits. Below, the car also stays close to
+  // where the boom alone puts it, so a high ball never pushes it down the screen.
   const tanHalfV = Math.tan((rlFovToThreeVerticalFov(settings.fov, aspect) * Math.PI) / 360);
   const yawLimitRad = Math.atan(CAR_FRAMING_LIMIT_NDC * tanHalfV * aspect);
   const pitchLimitRad = Math.atan(CAR_FRAMING_LIMIT_NDC * tanHalfV);
+  const usualCarPitchRad = -Math.atan2(settings.height, settings.distance * distanceMultiplier)
+    - (settings.angle * Math.PI) / 180;
+  const lowestCarPitchRad = Math.max(-pitchLimitRad, usualCarPitchRad - (CAR_MAX_DROP_DEG * Math.PI) / 180);
   const toCar = pivot.clone().sub(position);
 
   let carLocal = toCar.clone().applyQuaternion(quaternion.clone().invert());
@@ -294,7 +306,10 @@ export function placeBoomCamera(
     quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(AXIS_Y, yawCorrection));
     carLocal = toCar.clone().applyQuaternion(quaternion.clone().invert());
   }
-  const pitchCorrection = excessAngle(Math.atan2(carLocal.y, -carLocal.z), pitchLimitRad);
+  const carPitchRad = Math.atan2(carLocal.y, -carLocal.z);
+  const pitchCorrection = carPitchRad < lowestCarPitchRad
+    ? carPitchRad - lowestCarPitchRad
+    : excessAngle(carPitchRad, pitchLimitRad);
   if (pitchCorrection !== 0) {
     quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(AXIS_X, pitchCorrection));
   }
