@@ -484,8 +484,12 @@ describe('Scene Graph & Manager Integrity Verification', () => {
     const firstPadMatrix = new THREE.Matrix4();
     padBatches[0].getMatrixAt(0, firstPadMatrix);
     expect(firstPadMatrix.elements[12]).toBe(mockPads[0].position.x);
-    expect(firstPadMatrix.elements[13]).toBe(6);
+    expect(firstPadMatrix.elements[13]).toBe(4);
     expect(firstPadMatrix.elements[14]).toBe(mockPads[0].position.z);
+    const firstOrbMatrix = new THREE.Matrix4();
+    padBatches[1].getMatrixAt(0, firstOrbMatrix);
+    expect(firstOrbMatrix.elements[13]).toBeGreaterThanOrEqual(64);
+    expect(firstOrbMatrix.elements[13]).toBeLessThanOrEqual(76);
     let localLights = 0;
     scene.traverse((object) => {
       if (object instanceof THREE.PointLight) localLights++;

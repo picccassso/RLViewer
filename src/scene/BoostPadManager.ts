@@ -1,10 +1,22 @@
 import * as THREE from 'three';
 import { ReplayBoostPad } from '../types/replay';
 
+// Visual sizes in uu, scaled against the car (Octane ~118 long, ~84 wide): a car parked on a
+// big pad covers most of it, and a small pad disappears under the car. These are the drawn
+// shapes, not the pickup hitboxes (radius 208 / 144), which are much larger.
+// A big pad's core is an orb floating about roof height that bobs gently; a small pad's is a
+// flat glowing puck set into the base.
+const PAD_DIMENSIONS = {
+  big: { baseRadius: 80, baseHeight: 8, coreRadius: 36, coreCenter: 70, bobAmplitude: 6 },
+  small: { baseRadius: 28, baseHeight: 4, coreRadius: 21, coreCenter: 2.5, bobAmplitude: 0 },
+} as const;
+const SMALL_CORE_HEIGHT = 5;
+const ORB_BOB_SPEED = 2.5; // radians per second
+
 interface PadInstance {
   pad: ReplayBoostPad;
   isAvailable: boolean;
-  rotation: number;
+  bobPhase: number;
 }
 
 interface PadBatch {
@@ -34,17 +46,16 @@ export class BoostPadManager {
       const pads = boostPads.filter((pad) => (pad.size === 'Big') === isBig);
       if (pads.length === 0) continue;
 
-      const radius = isBig ? 140 : 55;
-      const height = isBig ? 12 : 5;
+      const dims = isBig ? PAD_DIMENSIONS.big : PAD_DIMENSIONS.small;
       const base = new THREE.InstancedMesh(
-        new THREE.CylinderGeometry(radius, radius, height, 24),
+        new THREE.CylinderGeometry(dims.baseRadius, dims.baseRadius, dims.baseHeight, 24),
         new THREE.MeshStandardMaterial({ color: 0x1f2937, metalness: 0.8, roughness: 0.3 }),
         pads.length
       );
 
       const coreGeometry = isBig
-        ? new THREE.CylinderGeometry(radius * 0.7, radius * 0.7, 45, 24)
-        : new THREE.CylinderGeometry(radius * 0.75, radius * 0.75, height + 1, 16);
+        ? new THREE.SphereGeometry(dims.coreRadius, 24, 16)
+        : new THREE.CylinderGeometry(dims.coreRadius, dims.coreRadius, SMALL_CORE_HEIGHT, 16);
       const activeCore = new THREE.InstancedMesh(
         coreGeometry,
         new THREE.MeshStandardMaterial({
@@ -75,7 +86,8 @@ export class BoostPadManager {
 
       const batch: PadBatch = {
         isBig,
-        pads: pads.map((pad) => ({ pad, isAvailable: true, rotation: 0 })),
+        // Offset each orb's phase so the big pads don't bob in lockstep.
+        pads: pads.map((pad) => ({ pad, isAvailable: true, bobPhase: pad.index })),
         base,
         activeCore,
         inactiveCore,
@@ -83,7 +95,7 @@ export class BoostPadManager {
       this.batches.push(batch);
 
       for (let i = 0; i < pads.length; i++) {
-        this.setInstanceTransform(base, i, pads[i], height / 2, 0);
+        this.setInstanceTransform(base, i, pads[i], dims.baseHeight / 2);
       }
       base.instanceMatrix.needsUpdate = true;
       this.rebuildCores(batch);
@@ -94,25 +106,26 @@ export class BoostPadManager {
     mesh: THREE.InstancedMesh,
     index: number,
     pad: ReplayBoostPad,
-    height: number,
-    rotation: number
+    height: number
   ) {
     this.dummy.position.set(pad.position.x, height, pad.position.z);
-    this.dummy.rotation.set(0, rotation, 0);
     this.dummy.updateMatrix();
     mesh.setMatrixAt(index, this.dummy.matrix);
   }
 
   private rebuildCores(batch: PadBatch, updateInactive = true) {
-    const coreHeight = batch.isBig ? 35 : 3;
+    const dims = batch.isBig ? PAD_DIMENSIONS.big : PAD_DIMENSIONS.small;
     let activeCount = 0;
     let inactiveCount = 0;
 
     for (const instance of batch.pads) {
       const mesh = instance.isAvailable ? batch.activeCore : batch.inactiveCore;
       const index = instance.isAvailable ? activeCount++ : inactiveCount++;
-      if (instance.isAvailable || updateInactive) {
-        this.setInstanceTransform(mesh, index, instance.pad, coreHeight, instance.rotation);
+      if (instance.isAvailable) {
+        const bob = Math.sin(instance.bobPhase) * dims.bobAmplitude;
+        this.setInstanceTransform(mesh, index, instance.pad, dims.coreCenter + bob);
+      } else if (updateInactive) {
+        this.setInstanceTransform(mesh, index, instance.pad, dims.coreCenter);
       }
     }
 
@@ -134,7 +147,7 @@ export class BoostPadManager {
           changed = true;
         }
         if (batch.isBig && instance.isAvailable) {
-          instance.rotation += deltaTime * 1.5;
+          instance.bobPhase += deltaTime * ORB_BOB_SPEED;
           hasActiveBigPad = true;
         }
       }
