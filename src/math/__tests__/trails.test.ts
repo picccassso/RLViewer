@@ -17,6 +17,7 @@ import {
   nearestArenaSurface,
   nextSupersonic,
   sampleBallTrail,
+  sampleBoostPlume,
   sampleCarWheelTrail,
   SUPERSONIC_FLAG,
 } from '../trails';
@@ -303,7 +304,8 @@ describe('Trails on the sample replay', () => {
     const trails = new TrailManager(scene);
     trails.setReplay(data);
     const meshes = () => scene.children[0].children as THREE.Mesh[];
-    expect(meshes()).toHaveLength(1 + data.players.length * 2);
+    // Ball trail, then two wheel streaks and a boost plume per car.
+    expect(meshes()).toHaveLength(1 + data.players.length * 3);
 
     // Just after the first touch, the ball trail is drawn in the touching team's colour.
     const firstTouchFrame = rawData.touch_events[0].frame;
@@ -316,5 +318,73 @@ describe('Trails on the sample replay', () => {
 
     trails.dispose();
     expect(scene.children).toHaveLength(0);
+  });
+});
+
+describe('Boost plume', () => {
+  // A level car drives +X at 2300 uu/s, boosting from frame 10 to 29, demolished at frame 50.
+  const data = syntheticReplay(60, (f, buffer, offset) => {
+    const car = offset + FLOATS_PER_BALL;
+    buffer[car] = f * 2300 * FRAME_SECONDS;
+    buffer[car + 1] = 17;
+    buffer[car + 7] = 2300;
+    buffer[car + 11] = 1 | (f >= 10 && f < 30 ? 8 : 0) | (f >= 50 ? 4 : 0);
+  });
+  const exhaust = { x: -59, y: 18, z: 0 };
+  const sample = (time: number) => {
+    const frame = unpackFrame(data, Math.floor(time / FRAME_SECONDS), Math.floor(time / FRAME_SECONDS) + 1, (time / FRAME_SECONDS) % 1);
+    const particles: { x: number; y: number; z: number; age: number; variant: number }[] = [];
+    sampleBoostPlume(data, 0, frame.frameIndex, time, frame.players[0] ?? {
+      position: { x: time * 2300, y: 17, z: 0 },
+      rotation: { x: 0, y: 0, z: 0, w: 1 },
+      velocity: { x: 2300, y: 0, z: 0 },
+    }, exhaust, 0.4, (x, y, z, age, variant) => particles.push({ x, y, z, age, variant }));
+    return particles;
+  };
+
+  it('streams out behind a boosting car on a fixed clock', () => {
+    const particles = sample(25.5 * FRAME_SECONDS);
+    // 0.4 s at 200 a second, plus one fading out at exactly 0.4 s
+    expect(particles.length).toBeGreaterThanOrEqual(80);
+    expect(particles.length).toBeLessThanOrEqual(81);
+    for (let i = 1; i < particles.length; i++) {
+      expect(particles[i].age).toBeGreaterThan(particles[i - 1].age);
+      expect(particles[i].age - particles[i - 1].age).toBeCloseTo(1 / 200, 6);
+    }
+    // The newest particle is at the exhaust, the oldest hangs far behind the car.
+    const carX = 25.5 * 2300 * FRAME_SECONDS;
+    expect(particles[0].x).toBeGreaterThan(carX - 59 - 20);
+    expect(particles.at(-1)!.x).toBeLessThan(carX - 800);
+    for (const p of particles) expect(p.variant).toBeGreaterThanOrEqual(0);
+  });
+
+  it('leaves each particle where it was, whenever it is drawn', () => {
+    const early = sample(20 * FRAME_SECONDS);
+    const late = sample(20 * FRAME_SECONDS + 1 / 200);
+    // Same particle one spawn later: one step older, moved by its own drift only.
+    const drifted = late[1];
+    expect(drifted.age).toBeCloseTo(early[0].age + 1 / 200, 6);
+    expect(Math.hypot(drifted.x - early[0].x, drifted.y - early[0].y, drifted.z - early[0].z)).toBeLessThan(10);
+    expect(drifted.variant).toBe(early[0].variant);
+  });
+
+  it('only spawns while the boost flag is on', () => {
+    expect(sample(5 * FRAME_SECONDS)).toEqual([]);
+    const afterRelease = sample(33 * FRAME_SECONDS);
+    expect(afterRelease.length).toBeGreaterThan(0);
+    expect(Math.min(...afterRelease.map((p) => p.age))).toBeCloseTo(3 * FRAME_SECONDS, 6);
+    expect(sample(45 * FRAME_SECONDS)).toEqual([]);
+  });
+
+  it('stops at a demolition', () => {
+    const boosting = syntheticReplay(20, (f, buffer, offset) => {
+      const car = offset + FLOATS_PER_BALL;
+      buffer[car] = f * 1000 * FRAME_SECONDS;
+      buffer[car + 11] = 1 | 8 | (f === 10 ? 4 : 0);
+    });
+    const car = { position: { x: 15 * 1000 * FRAME_SECONDS, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0, w: 1 }, velocity: { x: 1000, y: 0, z: 0 } };
+    const ages: number[] = [];
+    sampleBoostPlume(boosting, 0, 15, 15 * FRAME_SECONDS, car, exhaust, 0.4, (_x, _y, _z, age) => ages.push(age));
+    expect(Math.max(...ages)).toBeLessThanOrEqual(4 * FRAME_SECONDS + 1e-6);
   });
 });

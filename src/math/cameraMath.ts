@@ -130,6 +130,47 @@ export function getSpeedDistanceMultiplier(speedUu: number, stiffness: number = 
 }
 
 /**
+ * Extra boom length per uu/s² of acceleration, scaled by looseness like the speed stretch.
+ * The camera trails a car that is picking up speed and catches up once it stops, so the car
+ * pulls away on screen as it boosts or dodges, and rushes back at the camera when it slows hard.
+ * Boosting on the turf (~1000 uu/s²) adds ~7% at the default stiffness.
+ */
+export const ACCEL_STRETCH_PER_UU_S2 = 1.2e-4;
+/** Most the boom stretches while accelerating, and shortens while braking, at stiffness 0. */
+const MAX_ACCEL_STRETCH = 0.15;
+const MAX_DECEL_PULL_IN = 0.08;
+
+/**
+ * Pace (1/s) at which the camera's sense of the car's speed follows the car. The boom
+ * stretch lags the car by about 0.4 s, and the rate of change of this smoothed speed is
+ * the acceleration the camera reacts to. Slow enough that a dodge, a landing or feathered
+ * boost eases the boom out and back over half a second instead of jerking it.
+ */
+export const CAMERA_SPEED_FOLLOW_RATE = 2.5;
+
+/** Boom length multiplier from the camera's smoothed speed (uu/s) and its rate of change (uu/s²). */
+export function getBoomStretch(speedUu: number, accelerationUu: number, stiffness: number = DEFAULT_CAMERA_SETTINGS.stiffness): number {
+  const looseness = 1 - Math.min(Math.max(stiffness, 0), 1);
+  const accelStretch = Math.min(Math.max(accelerationUu * ACCEL_STRETCH_PER_UU_S2, -MAX_DECEL_PULL_IN), MAX_ACCEL_STRETCH);
+  return getSpeedDistanceMultiplier(speedUu, stiffness) + looseness * accelStretch;
+}
+
+/**
+ * Moves `state.value` towards `target` like a critically damped spring, carrying its rate
+ * of change in `state.rate`. Same step as `springAim`, for a single number.
+ */
+export function springValue(state: { value: number; rate: number }, target: number, rate: number, deltaTime: number) {
+  if (deltaTime <= 0) return;
+  const omega = 2 * rate;
+  const x = omega * deltaTime;
+  const decay = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+  const offset = state.value - target;
+  const push = (state.rate + omega * offset) * deltaTime;
+  state.rate = (state.rate - omega * push) * decay;
+  state.value = target + (offset + push) * decay;
+}
+
+/**
  * Rotation whose -Z axis looks along `forward` with +Y as close to `up` as possible
  * (the Three.js camera convention).
  */

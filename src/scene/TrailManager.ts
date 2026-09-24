@@ -1,9 +1,17 @@
 import * as THREE from 'three';
 import { FrameState, ParsedReplayData } from '../types/replay';
-import { isOnSurface, sampleBallTrail, sampleCarWheelTrail } from '../math/trails';
+import {
+  BOOST_PARTICLE_SECONDS,
+  BOOST_PARTICLES_PER_SECOND,
+  isOnSurface,
+  sampleBallTrail,
+  sampleBoostPlume,
+  sampleCarWheelTrail
+} from '../math/trails';
 import { Vec3 } from '../math/coords';
 import { HITBOX_DIMENSIONS } from './CarManager';
 import { TrailRibbon } from './TrailRibbon';
+import { BoostPlume } from './BoostPlume';
 
 /** How far back the ball's trail reaches, in seconds, if the ball was touched longer ago. */
 export const BALL_TRAIL_SECONDS = 1.5;
@@ -19,13 +27,17 @@ const TEAM_TRAIL_COLORS = [new THREE.Color(0x2f8cff), new THREE.Color(0xff7a1a)]
 interface CarTrail {
   playerIndex: number;
   wheels: { offset: Vec3; ribbon: TrailRibbon }[];
+  /** Where boost leaves the car, in the car's frame (+X forward, +Y up). */
+  exhaust: Vec3;
+  boost: BoostPlume;
 }
 
 /**
  * Glowing trails, drawn from the recorded frames around the current time so they look
  * the same when paused, scrubbing or at any playback speed:
  * - the ball's path since its last touch, in the colour of the team that touched it;
- * - streaks behind the back wheels of supersonic cars driving on the floor, walls, ramps or ceiling.
+ * - streaks behind the back wheels of supersonic cars driving on the floor, walls, ramps or ceiling;
+ * - boost plumes, which hang in the air behind a boosting car and stream back past the camera.
  */
 export class TrailManager {
   private readonly group = new THREE.Group();
@@ -61,7 +73,13 @@ export class TrailManager {
         this.group.add(ribbon.mesh);
         return { offset: { x: rear, y: 0, z: side }, ribbon };
       });
-      this.carTrails.push({ playerIndex: player.index, wheels });
+      const boost = new BoostPlume(
+        Math.ceil(BOOST_PARTICLE_SECONDS * BOOST_PARTICLES_PER_SECOND) + 2,
+        TEAM_TRAIL_COLORS[player.team]
+      );
+      this.group.add(boost.points);
+      const exhaust = { x: -hitbox.length / 2, y: hitbox.height / 2, z: 0 };
+      this.carTrails.push({ playerIndex: player.index, wheels, exhaust, boost });
     }
   }
 
@@ -97,12 +115,22 @@ export class TrailManager {
         }
         ribbon.commit();
       }
+
+      const { boost } = trail;
+      boost.clear();
+      if (player && player.isPresent && !player.isDemoed) {
+        sampleBoostPlume(data, trail.playerIndex, frameIndex, time, player, trail.exhaust, BOOST_PARTICLE_SECONDS, (x, y, z, age, variant) => {
+          boost.push(x, y, z, age / BOOST_PARTICLE_SECONDS, variant);
+        });
+      }
+      boost.commit();
     }
   }
 
   private clearCarTrails() {
     for (const trail of this.carTrails) {
       for (const { ribbon } of trail.wheels) ribbon.dispose();
+      trail.boost.dispose();
     }
     this.carTrails = [];
   }

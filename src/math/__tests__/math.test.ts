@@ -17,6 +17,8 @@ import {
   computeCarCamAim,
   DEFAULT_CAMERA_SETTINGS,
   estimateCarHeading,
+  getBoomStretch,
+  getSpeedDistanceMultiplier,
   getSurfaceAlignment,
   lookRotation,
   MAX_BALL_ELEVATION_RAD,
@@ -24,6 +26,7 @@ import {
   rlFovToThreeVerticalFov,
   slerpAim,
   springAim,
+  springValue,
   trackCarHeading
 } from '../cameraMath';
 import {
@@ -622,5 +625,38 @@ describe('5. Rocket League Authentic Camera Geometry & FOV Scaling Verification'
     // 4:3 Narrower display: expands vertical FOV so horizontal view is not cropped
     const vFov4_3 = rlFovToThreeVerticalFov(fovSetting, 4 / 3);
     expect(vFov4_3).toBeGreaterThan(vFov16_9);
+  });
+});
+
+describe('Boom stretch at speed', () => {
+  it('springs onto a new speed without overshooting, alike at any frame rate', () => {
+    const settle = (dt: number) => {
+      const state = { value: 0, rate: 0 };
+      let peak = 0;
+      for (let t = 0; t < 4; t += dt) {
+        springValue(state, 2300, 2.5, dt);
+        peak = Math.max(peak, state.value);
+      }
+      return { state, peak };
+    };
+    const at60 = settle(1 / 60);
+    const at144 = settle(1 / 144);
+    expect(at60.peak).toBeLessThanOrEqual(2300 + 1e-6);
+    expect(at60.state.value).toBeCloseTo(2300, 0);
+    expect(Math.abs(at60.state.rate)).toBeLessThan(5);
+    expect(at144.state.value).toBeCloseTo(at60.state.value, 0);
+  });
+
+  it('pushes the camera back while accelerating and pulls it in while braking', () => {
+    const cruise = getBoomStretch(1500, 0, 0.45);
+    expect(cruise).toBeCloseTo(getSpeedDistanceMultiplier(1500, 0.45), 9);
+    // Boosting on the turf, ~1000 uu/s²
+    expect(getBoomStretch(1500, 1000, 0.45) - cruise).toBeCloseTo(0.55 * 0.12, 3);
+    expect(getBoomStretch(1500, -2000, 0.45)).toBeLessThan(cruise);
+    // Huge spikes (a ball hit, a bump) are capped
+    expect(getBoomStretch(1500, -1e6, 0.45)).toBeCloseTo(cruise - 0.55 * 0.08, 6);
+    expect(getBoomStretch(1500, 1e6, 0.45)).toBeCloseTo(cruise + 0.55 * 0.15, 6);
+    // Stiffness 1 keeps the boom rigid
+    expect(getBoomStretch(2300, 1000, 1)).toBe(1);
   });
 });

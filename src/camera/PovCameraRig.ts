@@ -4,10 +4,12 @@ import {
   computeBallCamAim,
   computeBallCamOrbit,
   computeCarCamAim,
-  getSpeedDistanceMultiplier,
+  CAMERA_SPEED_FOLLOW_RATE,
+  getBoomStretch,
   placeBoomCamera,
   slerpAim,
   springAim,
+  springValue,
   trackCarHeading
 } from '../math/cameraMath';
 import { FrameState } from '../types/replay';
@@ -32,6 +34,8 @@ export class PovCameraRig {
   private aimVelocity: THREE.Vector3 = new THREE.Vector3();
   private carHeading: THREE.Vector3 = new THREE.Vector3(1, 0, 0);
   private distanceMultiplier: number = 1;
+  /** The car's speed as the camera feels it, and how fast that is changing. */
+  private speed = { value: 0, rate: 0 };
   private orbit: number = 0;
   private lastCarPos: THREE.Vector3 = new THREE.Vector3();
   private hasLastCarPos: boolean = false;
@@ -119,17 +123,20 @@ export class PovCameraRig {
     const rate = carRate + (ballRate - carRate) * ballCamWeight;
     const maxTurnRate = THREE.MathUtils.degToRad(720 + (300 - 720) * ballCamWeight);
 
-    const speedStretch = getSpeedDistanceMultiplier(carVel.length(), stiffness);
+    // The boom stretches with speed and further while the car is accelerating, so a boost
+    // or a dodge pulls the car away from the camera and a hard stop brings it back.
     const snapped = this.needsSnap;
     if (this.needsSnap) {
       this.aim.copy(targetAim);
       this.aimVelocity.set(0, 0, 0);
-      this.distanceMultiplier = speedStretch;
+      this.speed.value = carVel.length();
+      this.speed.rate = 0;
       this.needsSnap = false;
     } else {
       springAim(this.aim, this.aimVelocity, targetAim, rate, maxTurnRate, deltaTime);
-      this.distanceMultiplier += (speedStretch - this.distanceMultiplier) * (1 - Math.exp(-3 * deltaTime));
+      springValue(this.speed, carVel.length(), CAMERA_SPEED_FOLLOW_RATE, deltaTime);
     }
+    this.distanceMultiplier = getBoomStretch(this.speed.value, this.speed.rate, stiffness);
 
     // Ball Cam's upward aim tilts the view rather than swinging the boom under the car,
     // so the camera keeps its height behind the car on the turf and in the air. Only a

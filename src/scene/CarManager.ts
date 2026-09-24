@@ -5,6 +5,7 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { PlayerInfo, FrameState } from '../types/replay';
 import { carModelFor } from './carBodies';
 import { flipResetBadgeAt } from '../math/flipReset';
+import { SUPERSONIC_SPEED_THRESHOLD } from '../math/cameraMath';
 
 // Octane Hitbox: 118.01 length (X), 36.16 height (Y), 84.20 width (Z)
 export const HITBOX_DIMENSIONS: Record<string, { length: number; width: number; height: number }> = {
@@ -102,7 +103,7 @@ interface CarEntity {
   /** Boost last written to the nameplate bar, so the page is only touched when it changes. */
   nameplateBoost: number;
   flipResetBadge: THREE.Object3D;
-  boostFlame: THREE.Mesh;
+  boostFlame: THREE.Group;
   hitboxWireframe: THREE.LineSegments;
   isModelLoaded: boolean;
 }
@@ -206,16 +207,29 @@ export class CarManager {
       hitboxWireframe.visible = false;
       carGroup.add(hitboxWireframe);
 
-      // Boost Flame Cone behind the car (-X is rear)
-      const flameGeo = new THREE.ConeGeometry(14, 50, 16);
-      const flameMat = new THREE.MeshBasicMaterial({
-        color: 0xf59e0b,
-        transparent: true,
-        opacity: 0.85,
-      });
-      const boostFlame = new THREE.Mesh(flameGeo, flameMat);
-      boostFlame.rotation.z = Math.PI / 2;
-      boostFlame.position.set(-hitbox.length / 2 - 25, hitbox.height / 2, 0);
+      // Boost flame behind the car (-X is rear): a team-coloured cone around a white-hot
+      // core, both brighter than white so they bloom. Its base sits on the exhaust.
+      const boostFlame = new THREE.Group();
+      const flameLayers: Array<[radius: number, length: number, color: THREE.Color, opacity: number]> = [
+        [15, 70, new THREE.Color(player.team === 0 ? 0x2f8cff : 0xff7a1a).multiplyScalar(2.5), 0.55],
+        [8, 45, new THREE.Color(1, 0.95, 0.85).multiplyScalar(4), 0.8],
+      ];
+      for (const [radius, length, color, opacity] of flameLayers) {
+        const geometry = new THREE.ConeGeometry(radius, length, 16, 1, true);
+        // Point the tip backwards and put the base at the group's origin.
+        geometry.rotateZ(Math.PI / 2);
+        geometry.translate(-length / 2, 0, 0);
+        const layer = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        }));
+        boostFlame.add(layer);
+      }
+      boostFlame.position.set(-hitbox.length / 2, hitbox.height / 2, 0);
       boostFlame.visible = false;
       carGroup.add(boostFlame);
 
@@ -375,7 +389,7 @@ export class CarManager {
       const entity = this.carEntities.get(playerState.info.index);
       if (!entity) continue;
 
-      const { isPresent, isDemoed, position, rotation, boostActive, boost } = playerState;
+      const { isPresent, isDemoed, position, rotation, velocity, boostActive, boost } = playerState;
 
       // Visibility: hidden if absent or demoed
       entity.group.visible = isPresent && !isDemoed;
@@ -404,8 +418,11 @@ export class CarManager {
       // Boost flame
       entity.boostFlame.visible = boostActive;
       if (boostActive) {
-        const s = 0.8 + Math.random() * 0.4;
-        entity.boostFlame.scale.set(s, s, s);
+        // Longer the faster the car goes, flickering.
+        const speed = Math.hypot(velocity.x, velocity.y, velocity.z);
+        const length = (0.8 + 0.6 * Math.min(speed / SUPERSONIC_SPEED_THRESHOLD, 1)) * (0.85 + Math.random() * 0.3);
+        const width = 0.9 + Math.random() * 0.2;
+        entity.boostFlame.scale.set(length, width, width);
       }
     }
     if (this.groundShadows) {
