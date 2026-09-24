@@ -13,6 +13,7 @@ import {
 import { unpackFrame } from '../frameUnpacker';
 import { FIELD_WIDTH, FIELD_LENGTH, FIELD_CEILING } from '../../scene/StadiumManager';
 import { buildTickMarks, readFinalScore, GOAL_EVENT_MATCH_WINDOW } from '../../parser/tickMarks';
+import { buildFlipResets, flipResetBadgeAt, FLIP_RESET_BADGE_SECONDS } from '../flipReset';
 
 function playerLookup(rawData: any, player: any) {
   const id = JSON.stringify(player);
@@ -142,6 +143,21 @@ describe('Real Replay End-to-End Integration Verification', () => {
       ['save', 1, 'Orange save by zach'],
     ]);
 
+    // Flip resets: every dodge refresh lands on a known player, on the playback clock
+    const metadataFrames = rawData.frame_data.metadata_frames;
+    const toPlaybackTime = (frame: number) =>
+      metadataFrames[Math.min(frame, metadataFrames.length - 1)].time - metadataFrames[0].time;
+    const roster = [...meta.team_zero, ...meta.team_one];
+    const flipResets = buildFlipResets(
+      rawData.dodge_refreshed_events,
+      roster.map((p: any) => JSON.stringify(p.remote_id)),
+      toPlaybackTime
+    );
+    expect(flipResets.flat()).toHaveLength(rawData.dodge_refreshed_events.length);
+    expect(flipResets.flat().length).toBeGreaterThan(0);
+    const zach = roster.findIndex((p: any) => p.name === 'zach');
+    expect(flipResets[zach][0]).toBeCloseTo(toPlaybackTime(1877), 5);
+
     // 4. Verify Frame Data & Bounds
     const ballFrames = rawData.frame_data.ball_data.frames;
     expect(ballFrames.length).toBeGreaterThan(9000);
@@ -159,5 +175,34 @@ describe('Real Replay End-to-End Integration Verification', () => {
         expect(threePos.y).toBeLessThan(FIELD_CEILING + 200);
       }
     }
+  });
+});
+
+describe('Flip reset badge', () => {
+  it('pops in at the reset, holds, then fades out', () => {
+    const resets = [10, 30];
+    expect(flipResetBadgeAt(resets, 9.9)).toBeNull();
+    const start = flipResetBadgeAt(resets, 10)!;
+    expect(start.opacity).toBe(0);
+    expect(start.scale).toBeGreaterThan(1);
+    expect(flipResetBadgeAt(resets, 11)).toEqual({ opacity: 1, scale: 1 });
+    expect(flipResetBadgeAt(resets, 10 + FLIP_RESET_BADGE_SECONDS - 0.25)!.opacity).toBeCloseTo(0.5, 5);
+    expect(flipResetBadgeAt(resets, 10 + FLIP_RESET_BADGE_SECONDS)).toBeNull();
+    // A later reset restarts the badge
+    expect(flipResetBadgeAt(resets, 31)).toEqual({ opacity: 1, scale: 1 });
+  });
+
+  it('ignores refreshes from players not on the roster', () => {
+    const ids = [JSON.stringify({ Steam: '1' }), JSON.stringify({ Steam: '2' })];
+    const resets = buildFlipResets(
+      [
+        { frame: 60, player: { Steam: '2' } },
+        { frame: 30, player: { Steam: '2' } },
+        { frame: 45, player: { Steam: '9' } },
+      ],
+      ids,
+      (frame) => frame / 30
+    );
+    expect(resets).toEqual([[], [1, 2]]);
   });
 });

@@ -44,6 +44,31 @@ body {
   .nameplate-orange {
     @apply border-orange-500;
   }
+
+  /* Stacks the flip reset badge above the nameplate that shares its anchor */
+  .flip-reset-anchor {
+    padding-bottom: 30px;
+  }
+
+  .flip-reset-anchor-solo {
+    padding-bottom: 0;
+  }
+
+  .flip-reset {
+    @apply whitespace-nowrap rounded px-2 py-0.5 text-[12px] font-black uppercase italic leading-tight tracking-wider text-white;
+    transform-origin: bottom center;
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
+  }
+
+  .flip-reset-blue {
+    background: linear-gradient(90deg, rgb(37 99 235 / 0.95), rgb(59 130 246 / 0.95));
+    box-shadow: 0 0 12px rgb(59 130 246 / 0.8);
+  }
+
+  .flip-reset-orange {
+    background: linear-gradient(90deg, rgb(234 88 12 / 0.95), rgb(249 115 22 / 0.95));
+    box-shadow: 0 0 12px rgb(249 115 22 / 0.8);
+  }
 }
 
 /* Custom scrollbars */

@@ -11,6 +11,7 @@ import { rlToThreeVec3, rlToThreeQuat } from '../math/coords';
 import { BoostPadClockManager } from '../math/boostPadClock';
 import { smoothReplayPositions } from '../math/motionSmoothing';
 import { buildTickMarks, readFinalScore } from './tickMarks';
+import { buildFlipResets } from '../math/flipReset';
 
 /**
  * Builds the viewer's frame buffer and metadata from subtr-actor's
@@ -153,6 +154,12 @@ export function buildReplayData(rawData: any): ParsedReplayData {
       const name = findMetaPlayer(player)?.meta?.name;
       return name ? { name } : undefined;
     }
+  );
+
+  const flipResets = buildFlipResets(
+    rawData.dodge_refreshed_events ?? [],
+    players.map((p) => p.id),
+    playbackTimeAtFrame
   );
 
   // Boost Pad Clock Manager for bitmasks
@@ -309,6 +316,7 @@ export function buildReplayData(rawData: any): ParsedReplayData {
     boostPads,
     tickMarks,
     teamScores: finalScores,
+    flipResets,
     framesBuffer
   };
 }

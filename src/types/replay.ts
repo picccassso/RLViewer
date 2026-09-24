@@ -47,6 +47,8 @@ export interface ParsedReplayData {
   boostPads: ReplayBoostPad[];
   tickMarks: ReplayTickMark[];
   teamScores: { team0: number; team1: number };
+  /** Playback times of each player's flip resets, indexed like `players`, sorted. */
+  flipResets: number[][];
   framesBuffer: Float32Array; // Stride = TOTAL_FLOATS_PER_FRAME
 }
 

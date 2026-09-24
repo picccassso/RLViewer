@@ -170,6 +170,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     const { boostPads, cars, ball } = managersRef.current;
     boostPads.initPads(replayData.boostPads);
     cars.initCars(replayData.players);
+    cars.setFlipResets(replayData.flipResets);
     ball.resetTrail();
 
     // Reset clock
