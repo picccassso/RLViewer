@@ -20,18 +20,25 @@ export const HITBOX_DIMENSIONS: Record<string, { length: number; width: number; 
 const NAMEPLATE_HEIGHT = 110;
 
 /**
- * Player name label, drawn by the browser over the 3D view (see CSS2DRenderer in the canvas)
- * so it stays crisp and the same readable size at any distance.
+ * Player name label with a boost bar underneath, drawn by the browser over the 3D view
+ * (see CSS2DRenderer in the canvas) so it stays crisp and the same readable size at any distance.
  */
-function createNameplate(info: PlayerInfo): THREE.Object3D {
+function createNameplate(info: PlayerInfo): { nameplate: THREE.Object3D; boostFill: HTMLElement | null } {
   // Without a DOM (unit tests) there is nothing to draw; a bare anchor keeps the placement testable.
-  if (typeof document === 'undefined') return new THREE.Object3D();
+  if (typeof document === 'undefined') return { nameplate: new THREE.Object3D(), boostFill: null };
   const element = document.createElement('div');
   element.className = info.team === 0 ? 'nameplate nameplate-blue' : 'nameplate nameplate-orange';
-  element.textContent = info.name;
+  const name = document.createElement('div');
+  name.textContent = info.name;
+  const boostBar = document.createElement('div');
+  boostBar.className = 'nameplate-boost';
+  const boostFill = document.createElement('div');
+  boostFill.className = 'nameplate-boost-fill';
+  boostBar.appendChild(boostFill);
+  element.append(name, boostBar);
   const nameplate = new CSS2DObject(element);
   nameplate.center.set(0.5, 1); // anchored at its bottom centre
-  return nameplate;
+  return { nameplate, boostFill };
 }
 
 /**
@@ -91,6 +98,9 @@ interface CarEntity {
   carMesh: THREE.Object3D;
   /** Lives in world space, not under the car, so it stays above the car however the car rolls. */
   nameplate: THREE.Object3D;
+  nameplateBoostFill: HTMLElement | null;
+  /** Boost last written to the nameplate bar, so the page is only touched when it changes. */
+  nameplateBoost: number;
   flipResetBadge: THREE.Object3D;
   boostFlame: THREE.Mesh;
   hitboxWireframe: THREE.LineSegments;
@@ -210,7 +220,7 @@ export class CarManager {
       carGroup.add(boostFlame);
 
       // 2. Nameplate
-      const nameplate = createNameplate(player);
+      const { nameplate, boostFill } = createNameplate(player);
       nameplate.visible = this.nameplatesVisible;
       this.carsGroup.add(nameplate);
       const flipResetBadge = createFlipResetBadge(player);
@@ -221,6 +231,8 @@ export class CarManager {
         group: carGroup,
         carMesh: fallbackCar,
         nameplate,
+        nameplateBoostFill: boostFill,
+        nameplateBoost: -1,
         flipResetBadge,
         boostFlame,
         hitboxWireframe,
@@ -363,7 +375,7 @@ export class CarManager {
       const entity = this.carEntities.get(playerState.info.index);
       if (!entity) continue;
 
-      const { isPresent, isDemoed, position, rotation, boostActive } = playerState;
+      const { isPresent, isDemoed, position, rotation, boostActive, boost } = playerState;
 
       // Visibility: hidden if absent or demoed
       entity.group.visible = isPresent && !isDemoed;
@@ -372,6 +384,7 @@ export class CarManager {
       entity.nameplate.visible = entity.group.visible && this.nameplatesVisible && !isPovTarget;
       this.updateFlipResetBadge(entity, frameState.time, isPovTarget);
       if (!entity.group.visible) continue;
+      if (entity.nameplate.visible) this.updateNameplateBoost(entity, boost);
 
       // Position and Rotation
       entity.group.position.set(position.x, position.y, position.z);
@@ -399,6 +412,13 @@ export class CarManager {
       this.groundShadows.count = shadowCount;
       if (shadowCount) this.groundShadows.instanceMatrix.needsUpdate = true;
     }
+  }
+
+  private updateNameplateBoost(entity: CarEntity, boost: number) {
+    const amount = Math.round(boost);
+    if (!entity.nameplateBoostFill || amount === entity.nameplateBoost) return;
+    entity.nameplateBoost = amount;
+    entity.nameplateBoostFill.style.transform = `scaleX(${amount / 100})`;
   }
 
   /** Playback times of each player's flip resets, indexed like the players passed to initCars. */

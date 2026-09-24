@@ -37,6 +37,17 @@ body {
     text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
   }
 
+  .nameplate-boost {
+    @apply mt-0.5 mb-0.5 h-[3px] overflow-hidden rounded-full bg-white/15;
+  }
+
+  .nameplate-boost-fill {
+    @apply h-full w-full;
+    background: linear-gradient(90deg, #ff6a00, #ffd23f);
+    transform-origin: left;
+    transform: scaleX(0);
+  }
+
   .nameplate-blue {
     @apply border-blue-500;
   }
@@ -47,7 +58,7 @@ body {
 
   /* Stacks the flip reset badge above the nameplate that shares its anchor */
   .flip-reset-anchor {
-    padding-bottom: 30px;
+    padding-bottom: 37px;
   }
 
   .flip-reset-anchor-solo {
