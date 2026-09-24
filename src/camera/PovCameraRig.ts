@@ -7,6 +7,7 @@ import {
   computeCarCamAim,
   getSpeedDistanceMultiplier,
   placeBoomCamera,
+  slerpAim,
   smoothAim,
   trackCarHeading
 } from '../math/cameraMath';
@@ -107,7 +108,7 @@ export class PovCameraRig {
 
     const carAim = computeCarCamAim(carPos, carQuat, heading);
     const ballCam = computeBallCamAim(carPos, ballPos, heading);
-    const targetAim = carAim.clone().slerp(ballCam.aim, ballCamWeight);
+    const targetAim = slerpAim(carAim.clone(), ballCam.aim, ballCamWeight);
 
     // Car Cam follows the car nearly rigidly. Ball Cam is looser, and slower still
     // while the ball is close, where its direction swings fastest.

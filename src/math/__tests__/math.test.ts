@@ -22,6 +22,7 @@ import {
   MAX_BALL_ELEVATION_RAD,
   placeBoomCamera,
   rlFovToThreeVerticalFov,
+  slerpAim,
   smoothAim,
   trackCarHeading
 } from '../cameraMath';
@@ -112,6 +113,15 @@ function projectWith(placed: { position: THREE.Vector3; quaternion: THREE.Quater
 
 function cameraUpOf(placed: { quaternion: THREE.Quaternion }) {
   return new THREE.Vector3(0, 1, 0).applyQuaternion(placed.quaternion);
+}
+
+/** Horizon tilt in degrees: how far the camera's up axis is turned from level around its view direction. */
+function rollDegOf(quaternion: THREE.Quaternion) {
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quaternion);
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion);
+  const levelRight = new THREE.Vector3().crossVectors(forward, WORLD_UP).normalize();
+  const levelUp = new THREE.Vector3().crossVectors(levelRight, forward);
+  return THREE.MathUtils.radToDeg(Math.atan2(up.dot(levelRight), up.dot(levelUp)));
 }
 
 function carCam(carPos: THREE.Vector3, carQuat: THREE.Quaternion, settings = DEFAULT_CAMERA_SETTINGS) {
@@ -353,6 +363,40 @@ describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
 
     expect(placed.position.y).toBeGreaterThan(carPos.y);
     expect(projectWith(placed, carPos).y).toBeLessThan(0);
+  });
+
+  it('keeps the horizon level while Ball Cam turns and pitches up at once', () => {
+    const carPos = new THREE.Vector3(0, 17, 0);
+    const heading = new THREE.Vector3(0, 0, -1);
+    const aim = computeBallCamAim(carPos, new THREE.Vector3(0, 93, -1500), heading).aim;
+    const target = computeBallCamAim(carPos, new THREE.Vector3(900, 1400, 300), heading).aim;
+
+    let worstRoll = 0;
+    for (let i = 0; i < 120; i++) {
+      smoothAim(aim, target, 9, THREE.MathUtils.degToRad(300), 1 / 60);
+      worstRoll = Math.max(worstRoll, Math.abs(rollDegOf(aim)));
+    }
+    expect(worstRoll).toBeLessThan(0.01);
+    expect(aim.angleTo(target)).toBeLessThan(1e-3);
+  });
+
+  it('keeps the horizon level while blending from Car Cam to Ball Cam for a high ball', () => {
+    const carPos = new THREE.Vector3(0, 17, 0);
+    const heading = new THREE.Vector3(0, 0, -1);
+    const carAim = computeCarCamAim(carPos, new THREE.Quaternion(), heading);
+    const ballAim = computeBallCamAim(carPos, new THREE.Vector3(900, 1400, 300), heading).aim;
+
+    for (let t = 0; t <= 1.0001; t += 0.05) {
+      expect(Math.abs(rollDegOf(slerpAim(carAim.clone(), ballAim, t)))).toBeLessThan(0.01);
+    }
+    expect(slerpAim(carAim.clone(), ballAim, 1).angleTo(ballAim)).toBeLessThan(1e-6);
+  });
+
+  it('still rolls onto a wall-aligned aim', () => {
+    const level = lookRotation(new THREE.Vector3(0, 0, -1), WORLD_UP);
+    const onWall = lookRotation(new THREE.Vector3(0, 0, -1), new THREE.Vector3(1, 0, 0));
+    expect(Math.abs(rollDegOf(slerpAim(level.clone(), onWall, 0.5)))).toBeCloseTo(45, 3);
+    expect(slerpAim(level.clone(), onWall, 1).angleTo(onWall)).toBeLessThan(1e-6);
   });
 });
 

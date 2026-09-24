@@ -323,5 +323,28 @@ export function smoothAim(
   const angle = current.angleTo(target);
   if (angle < 1e-6) return current.copy(target);
   const step = Math.min(angle * (1 - Math.exp(-rate * deltaTime)), maxTurnRateRad * deltaTime);
-  return current.slerp(target, Math.min(step / angle, 1));
+  return slerpAim(current, target, Math.min(step / angle, 1));
+}
+
+/**
+ * Slerps `current` towards `target` by `t`. A slerp between two level aims banks the
+ * horizon partway whenever both yaw and pitch change, so when both ends are level the
+ * result is levelled around its own view direction. Aims aligned to a wall or the
+ * ceiling slerp unchanged.
+ */
+export function slerpAim(current: THREE.Quaternion, target: THREE.Quaternion, t: number): THREE.Quaternion {
+  const level = isLevelAim(current) && isLevelAim(target);
+  current.slerp(target, t);
+  if (!level) return current;
+
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(current);
+  if (Math.abs(forward.y) > 0.999) return current;
+  return current.copy(lookRotation(forward, WORLD_UP));
+}
+
+/** An aim with no roll: its right axis is horizontal and its up axis points upward. */
+function isLevelAim(aim: THREE.Quaternion): boolean {
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(aim);
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(aim);
+  return Math.abs(right.y) < 1e-4 && up.y > 0;
 }
