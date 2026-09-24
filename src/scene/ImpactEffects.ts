@@ -32,11 +32,11 @@ const vertexShader = /* glsl */ `
     float streak = length(spriteStreak);
     if (streak > 1e-3) {
       vec3 along = spriteStreak / streak;
-      vec3 across = cross(along, toCamera);
+      vec3 across = cross(toCamera, along);
       float acrossLength = length(across);
       if (acrossLength > 1e-4) {
         right = along * (0.5 * streak / spriteSize + 1.0);
-        up = across / acrossLength;
+        up = (across / acrossLength) * 1.5;
       }
     }
     vec3 world = centre + (right * corner.x + up * corner.y) * spriteSize;
@@ -69,8 +69,8 @@ const fragmentShader = /* glsl */ `
       // A narrow, bright filament with pointed ends, rather than a stretched fuzzy blob.
       float taper = max(0.0, 1.0 - vUv.x * vUv.x);
       float width = abs(vUv.y) / max(0.15, taper);
-      float core = exp(-width * width * 32.0);
-      float halo = exp(-width * width * 5.0) * 0.22;
+      float core = exp(-width * width * 24.0);
+      float halo = exp(-width * width * 4.5) * 0.25;
       shape = (core + halo) * taper;
     }
     gl_FragColor = vec4(vColor, vAlpha * shape);
@@ -112,6 +112,7 @@ export class ImpactEffects {
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
     });
     this.mesh = new THREE.Mesh(geometry, material);
     // The sprites move every frame, so a stale bounding sphere would cull them wrongly.
