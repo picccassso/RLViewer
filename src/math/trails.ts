@@ -281,7 +281,7 @@ export const BOOST_PARTICLE_SECONDS = 0.4;
 const BOOST_CARRY = 0.1;
 /** Speed particles are blown out of the exhaust, and how far they scatter sideways. */
 const BOOST_EJECT_SPEED = 350; // uu/s
-const BOOST_SPREAD_SPEED = 110; // uu/s
+const BOOST_SPREAD_SPEED = 80; // uu/s
 /** Flag bit set on a player's frame while the car is boosting. */
 const BOOST_FLAG = 8;
 
@@ -289,8 +289,8 @@ const BOOST_FLAG = 8;
 export type EmitBoostParticle = (x: number, y: number, z: number, age: number, variant: number) => void;
 
 /** Stable pseudo-random 0..1 for particle `k` of a player, so each particle keeps its own spread. */
-function particleRandom(k: number, player: number, channel: number): number {
-  let h = Math.imul(k, 0x9e3779b1) ^ Math.imul(player + 1, 0x85ebca77) ^ Math.imul(channel + 1, 0xc2b2ae3d);
+function particleRandom(k: number, player: number, channel: number, exhaustIdx = 0): number {
+  let h = Math.imul(k, 0x9e3779b1) ^ Math.imul(player + 1, 0x85ebca77) ^ Math.imul(channel + 1, 0xc2b2ae3d) ^ Math.imul(exhaustIdx, 0x27d4eb2d);
   h = Math.imul(h ^ (h >>> 16), 0x7feb352d);
   h = Math.imul(h ^ (h >>> 15), 0x846ca68b);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
@@ -323,7 +323,7 @@ function readExhaust(position: Vec3, rotation: Quat, velocity: Vec3, exhaust: Ve
 
 /**
  * The boost particles a car has blown out over the last `maxAge` seconds, newest first,
- * where they are at `time`. Particles leave `exhaust` (in the car's frame, +X forward) on
+ * where they are at `time`. Particles leave `exhaust` points (in the car's frame, +X forward) on
  * a fixed clock while the car's recorded boost flag is on, their exhaust point
  * interpolated between recorded frames, so the plume looks the same paused, scrubbing or
  * at any playback speed. `car` is the car's interpolated state at `time`.
@@ -334,16 +334,24 @@ export function sampleBoostPlume(
   frameIndex: number,
   time: number,
   car: { position: Vec3; rotation: Quat; velocity: Vec3 },
-  exhaust: Vec3,
+  exhaust: Vec3 | readonly Vec3[],
   maxAge: number,
   emit: EmitBoostParticle
 ) {
+  const exhausts = Array.isArray(exhaust) ? exhaust : [exhaust];
+  const numExhausts = exhausts.length;
+  if (numExhausts === 0) return;
+
   const buffer = data.framesBuffer;
   const playerOffset = FLOATS_PER_BALL + playerIndex * FLOATS_PER_PLAYER;
   const since = time - maxAge;
-  const newer: ExhaustState = { x: 0, y: 0, z: 0, bx: 0, by: 0, bz: 0, vx: 0, vy: 0, vz: 0 };
-  const older: ExhaustState = { ...newer };
-  readExhaust(car.position, car.rotation, car.velocity, exhaust, newer);
+  const newer: ExhaustState[] = [];
+  const older: ExhaustState[] = [];
+  for (let e = 0; e < numExhausts; e++) {
+    newer.push({ x: 0, y: 0, z: 0, bx: 0, by: 0, bz: 0, vx: 0, vy: 0, vz: 0 });
+    older.push({ x: 0, y: 0, z: 0, bx: 0, by: 0, bz: 0, vx: 0, vy: 0, vz: 0 });
+    readExhaust(car.position, car.rotation, car.velocity, exhausts[e], newer[e]);
+  }
   const position = { x: 0, y: 0, z: 0 };
   const rotation = { x: 0, y: 0, z: 0, w: 1 };
   const velocity = { x: 0, y: 0, z: 0 };
@@ -358,9 +366,11 @@ export function sampleBoostPlume(
     position.x = buffer[o]; position.y = buffer[o + 1]; position.z = buffer[o + 2];
     rotation.x = buffer[o + 3]; rotation.y = buffer[o + 4]; rotation.z = buffer[o + 5]; rotation.w = buffer[o + 6];
     velocity.x = buffer[o + 7]; velocity.y = buffer[o + 8]; velocity.z = buffer[o + 9];
-    readExhaust(position, rotation, velocity, exhaust, older);
+    for (let e = 0; e < numExhausts; e++) {
+      readExhaust(position, rotation, velocity, exhausts[e], older[e]);
+    }
     const span = newerTime - frameTime;
-    const step = Math.hypot(newer.x - older.x, newer.y - older.y, newer.z - older.z);
+    const step = Math.hypot(newer[0].x - older[0].x, newer[0].y - older[0].y, newer[0].z - older[0].z);
     if (step > MAX_TRAIL_SPEED * Math.max(span, 1 / 60)) break;
 
     // Particles born in (frameTime, newerTime], while the car was boosting from this frame on.
@@ -372,22 +382,28 @@ export function sampleBoostPlume(
         if (age > maxAge) break;
         const s = span > 1e-6 ? (born - frameTime) / span : 1;
         const lerp = (a: number, b: number) => a + (b - a) * s;
-        const bx = lerp(older.bx, newer.bx);
-        const by = lerp(older.by, newer.by);
-        const bz = lerp(older.bz, newer.bz);
-        const driftX = lerp(older.vx, newer.vx) * BOOST_CARRY + bx * BOOST_EJECT_SPEED + (particleRandom(k, playerIndex, 0) * 2 - 1) * BOOST_SPREAD_SPEED;
-        const driftY = lerp(older.vy, newer.vy) * BOOST_CARRY + by * BOOST_EJECT_SPEED + (particleRandom(k, playerIndex, 1) * 2 - 1) * BOOST_SPREAD_SPEED;
-        const driftZ = lerp(older.vz, newer.vz) * BOOST_CARRY + bz * BOOST_EJECT_SPEED + (particleRandom(k, playerIndex, 2) * 2 - 1) * BOOST_SPREAD_SPEED;
-        emit(
-          lerp(older.x, newer.x) + driftX * age,
-          lerp(older.y, newer.y) + driftY * age,
-          lerp(older.z, newer.z) + driftZ * age,
-          age,
-          particleRandom(k, playerIndex, 3)
-        );
+        for (let eIdx = 0; eIdx < numExhausts; eIdx++) {
+          const oe = older[eIdx];
+          const ne = newer[eIdx];
+          const bx = lerp(oe.bx, ne.bx);
+          const by = lerp(oe.by, ne.by);
+          const bz = lerp(oe.bz, ne.bz);
+          const driftX = lerp(oe.vx, ne.vx) * BOOST_CARRY + bx * BOOST_EJECT_SPEED + (particleRandom(k, playerIndex, 0, eIdx) * 2 - 1) * BOOST_SPREAD_SPEED;
+          const driftY = lerp(oe.vy, ne.vy) * BOOST_CARRY + by * BOOST_EJECT_SPEED + (particleRandom(k, playerIndex, 1, eIdx) * 2 - 1) * BOOST_SPREAD_SPEED;
+          const driftZ = lerp(oe.vz, ne.vz) * BOOST_CARRY + bz * BOOST_EJECT_SPEED + (particleRandom(k, playerIndex, 2, eIdx) * 2 - 1) * BOOST_SPREAD_SPEED;
+          emit(
+            lerp(oe.x, ne.x) + driftX * age,
+            lerp(oe.y, ne.y) + driftY * age,
+            lerp(oe.z, ne.z) + driftZ * age,
+            age,
+            particleRandom(k, playerIndex, 3, eIdx)
+          );
+        }
       }
     }
-    Object.assign(newer, older);
+    for (let e = 0; e < numExhausts; e++) {
+      Object.assign(newer[e], older[e]);
+    }
     newerTime = frameTime;
   }
 }

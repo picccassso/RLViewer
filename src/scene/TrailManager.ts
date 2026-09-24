@@ -9,9 +9,9 @@ import {
   sampleCarWheelTrail
 } from '../math/trails';
 import { Vec3 } from '../math/coords';
-import { HITBOX_DIMENSIONS } from './CarManager';
+import { getCarExhausts, HITBOX_DIMENSIONS } from './carBodies';
 import { TrailRibbon } from './TrailRibbon';
-import { BoostPlume } from './BoostPlume';
+import { BoostPlume, ALPHA_BOOST_COLOR } from './BoostPlume';
 
 /** How far back the ball's trail reaches, in seconds, if the ball was touched longer ago. */
 export const BALL_TRAIL_SECONDS = 1.5;
@@ -28,7 +28,7 @@ interface CarTrail {
   playerIndex: number;
   wheels: { offset: Vec3; ribbon: TrailRibbon }[];
   /** Where boost leaves the car, in the car's frame (+X forward, +Y up). */
-  exhaust: Vec3;
+  exhausts: Vec3[];
   boost: BoostPlume;
 }
 
@@ -73,13 +73,13 @@ export class TrailManager {
         this.group.add(ribbon.mesh);
         return { offset: { x: rear, y: 0, z: side }, ribbon };
       });
+      const exhausts = getCarExhausts(player.car_body_id, player.car_hitbox_family);
       const boost = new BoostPlume(
-        Math.ceil(BOOST_PARTICLE_SECONDS * BOOST_PARTICLES_PER_SECOND) + 2,
-        TEAM_TRAIL_COLORS[player.team]
+        (Math.ceil(BOOST_PARTICLE_SECONDS * BOOST_PARTICLES_PER_SECOND) + 2) * exhausts.length,
+        ALPHA_BOOST_COLOR
       );
       this.group.add(boost.points);
-      const exhaust = { x: -hitbox.length / 2, y: hitbox.height / 2, z: 0 };
-      this.carTrails.push({ playerIndex: player.index, wheels, exhaust, boost });
+      this.carTrails.push({ playerIndex: player.index, wheels, exhausts, boost });
     }
   }
 
@@ -119,7 +119,7 @@ export class TrailManager {
       const { boost } = trail;
       boost.clear();
       if (player && player.isPresent && !player.isDemoed) {
-        sampleBoostPlume(data, trail.playerIndex, frameIndex, time, player, trail.exhaust, BOOST_PARTICLE_SECONDS, (x, y, z, age, variant) => {
+        sampleBoostPlume(data, trail.playerIndex, frameIndex, time, player, trail.exhausts, BOOST_PARTICLE_SECONDS, (x, y, z, age, variant) => {
           boost.push(x, y, z, age / BOOST_PARTICLE_SECONDS, variant);
         });
       }

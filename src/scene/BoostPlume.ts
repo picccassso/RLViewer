@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 
+/** Iconic Alpha Boost (Gold Rush) golden amber signature color */
+export const ALPHA_BOOST_COLOR = new THREE.Color(0xffa800);
+
 const vertexShader = /* glsl */ `
   attribute float life;
   attribute float variant;
@@ -7,19 +10,25 @@ const vertexShader = /* glsl */ `
   uniform vec2 nearFade;
   varying float vLife;
   varying float vAlpha;
+  varying float vVariant;
 
   void main() {
     vec4 view = viewMatrix * vec4(position, 1.0);
     float distance = max(-view.z, 1.0);
-    // Puffs swell as they leave the exhaust, each a little different.
-    float size = mix(12.0, 46.0, sqrt(life)) * (0.75 + 0.5 * variant);
-    gl_PointSize = min(size * projectionMatrix[1][1] * 0.5 * viewportHeight / distance, 256.0);
+
+    bool isEmber = variant > 0.80;
+    // Puffs swell into golden smoke clouds; embers are small sparks.
+    float baseSize = isEmber ? mix(7.0, 14.0, life) : mix(12.0, 38.0, sqrt(life)) * (0.75 + 0.35 * variant);
+    gl_PointSize = min(baseSize * projectionMatrix[1][1] * 0.5 * viewportHeight / distance, 256.0);
     gl_Position = projectionMatrix * view;
 
     vLife = life;
-    vAlpha = pow(1.0 - life, 1.6) * (0.7 + 0.3 * variant);
-    // Particles streaming back past the camera would blot out the screen.
-    vAlpha *= smoothstep(nearFade.x, nearFade.y, distance);
+    vVariant = variant;
+    // Gentle fade so overlapping dual streams don't blow out
+    float fade = isEmber
+      ? (1.0 - life) * (0.65 + 0.3 * sin(life * 30.0 + variant * 30.0))
+      : pow(1.0 - life, 1.6) * (0.55 + 0.25 * variant);
+    vAlpha = fade * smoothstep(nearFade.x, nearFade.y, distance);
   }
 `;
 
@@ -27,16 +36,55 @@ const fragmentShader = /* glsl */ `
   uniform vec3 color;
   varying float vLife;
   varying float vAlpha;
+  varying float vVariant;
 
   void main() {
     vec2 fromCentre = gl_PointCoord * 2.0 - 1.0;
-    float r2 = dot(fromCentre, fromCentre);
-    if (r2 > 1.0) discard;
-    float soft = (1.0 - r2) * (1.0 - r2);
-    // White-hot out of the exhaust, cooling to the team colour; brighter than white blooms.
-    vec3 rgb = mix(vec3(1.0, 0.96, 0.88), color, smoothstep(0.0, 0.3, vLife));
-    rgb *= mix(3.0, 1.2, smoothstep(0.0, 0.5, vLife));
-    gl_FragColor = vec4(rgb, vAlpha * soft * 0.45);
+    bool isEmber = vVariant > 0.80;
+
+    // Organic cloud lobe distortion for smoky puffs; crisp circular for sparkling embers
+    float dist;
+    if (isEmber) {
+      dist = length(fromCentre);
+    } else {
+      float angle = atan(fromCentre.y, fromCentre.x);
+      float lobe = 1.0 + 0.10 * sin(angle * 3.0 + vVariant * 6.28) + 0.06 * cos(angle * 5.0 - vVariant * 3.14);
+      dist = length(fromCentre) * lobe;
+    }
+    if (dist > 1.0) discard;
+
+    float soft = (1.0 - dist) * (1.0 - dist);
+
+    // Alpha Boost (Gold Rush) multi-stage thermal color grading:
+    // 1. Warm gold-white at the nozzle
+    vec3 whiteHot = vec3(1.0, 0.94, 0.82);
+    // 2. Radiant intense pure gold
+    vec3 radiantGold = vec3(1.0, 0.72, 0.08);
+    // 3. Fiery rich amber-orange
+    vec3 fireAmber = vec3(1.0, 0.40, 0.03);
+    // 4. Deep warm smoky russet
+    vec3 smokeRusset = vec3(0.48, 0.16, 0.02);
+
+    vec3 rgb;
+    if (vLife < 0.22) {
+      rgb = mix(whiteHot, radiantGold, smoothstep(0.0, 0.22, vLife));
+    } else if (vLife < 0.60) {
+      rgb = mix(radiantGold, fireAmber, smoothstep(0.22, 0.60, vLife));
+    } else {
+      rgb = mix(fireAmber, smokeRusset, smoothstep(0.60, 1.0, vLife));
+    }
+
+    if (isEmber) {
+      // Golden ember sparks: glittering with gentle bloom
+      rgb = mix(radiantGold * 1.6, whiteHot * 2.2, 1.0 - vLife);
+      gl_FragColor = vec4(rgb, vAlpha * soft * 0.42);
+    } else {
+      // Soft voluminous billowing golden puffs: mild bloom at nozzle, settling to warm natural gold
+      float bloomMult = mix(1.7, 1.0, smoothstep(0.0, 0.35, vLife));
+      rgb *= bloomMult;
+      gl_FragColor = vec4(rgb, vAlpha * soft * 0.30);
+    }
+
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
@@ -56,7 +104,7 @@ export class BoostPlume {
   private readonly variants: Float32Array;
   private count = 0;
 
-  constructor(maxParticles: number, color: THREE.Color) {
+  constructor(maxParticles: number, color: THREE.Color = ALPHA_BOOST_COLOR) {
     this.maxParticles = maxParticles;
     this.positions = new Float32Array(maxParticles * 3);
     this.lives = new Float32Array(maxParticles);

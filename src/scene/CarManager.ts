@@ -3,19 +3,11 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { PlayerInfo, FrameState, ParsedReplayData } from '../types/replay';
-import { carModelFor } from './carBodies';
+import { carModelFor, getCarExhausts, HITBOX_DIMENSIONS } from './carBodies';
 import { SUPERSONIC_SPEED_THRESHOLD } from '../math/cameraMath';
 import { buildWheelTravel, sampleWheelTravel } from '../math/wheelRotation';
 
-// Octane Hitbox: 118.01 length (X), 36.16 height (Y), 84.20 width (Z)
-export const HITBOX_DIMENSIONS: Record<string, { length: number; width: number; height: number }> = {
-  Octane: { length: 118.01, width: 84.20, height: 36.16 },
-  Dominus: { length: 127.93, width: 83.28, height: 31.30 },
-  Breakout: { length: 131.49, width: 80.52, height: 30.15 },
-  Plank: { length: 128.82, width: 84.67, height: 29.39 },
-  Hybrid: { length: 127.02, width: 82.19, height: 34.16 },
-  Merc: { length: 120.72, width: 76.05, height: 41.66 },
-};
+export { HITBOX_DIMENSIONS };
 
 /** Height of a nameplate's bottom edge above the car, straight up in world space. */
 const NAMEPLATE_HEIGHT = 110;
@@ -73,6 +65,33 @@ export function applyTeamPaint(mat: THREE.MeshStandardMaterial, team: 0 | 1) {
       );
   };
   mat.customProgramCacheKey = () => 'team-paint';
+}
+
+function createFlameJet(_team?: 0 | 1): THREE.Group {
+  const jet = new THREE.Group();
+  // Alpha Boost (Gold Rush) flame jet layers:
+  // 1. Outer warm amber-gold flame
+  // 2. Inner bright golden core
+  const flameLayers: Array<[radius: number, length: number, color: THREE.Color, opacity: number]> = [
+    [6.0, 52, new THREE.Color(0xff8800).multiplyScalar(1.6), 0.45],
+    [3.2, 34, new THREE.Color(1.0, 0.90, 0.65).multiplyScalar(2.4), 0.65],
+  ];
+  for (const [radius, length, color, opacity] of flameLayers) {
+    const geometry = new THREE.ConeGeometry(radius, length, 16, 1, true);
+    // Point the tip backwards and put the base at the jet's origin.
+    geometry.rotateZ(Math.PI / 2);
+    geometry.translate(-length / 2, 0, 0);
+    const layer = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }));
+    jet.add(layer);
+  }
+  return jet;
 }
 
 interface RollingWheel {
@@ -200,29 +219,15 @@ export class CarManager {
       hitboxWireframe.visible = false;
       carGroup.add(hitboxWireframe);
 
-      // Boost flame behind the car (-X is rear): a team-coloured cone around a white-hot
-      // core, both brighter than white so they bloom. Its base sits on the exhaust.
+      // Boost flame behind the car (-X is rear): team-coloured cones around white-hot
+      // cores shooting from the car's dual exhausts, brighter than white to bloom.
       const boostFlame = new THREE.Group();
-      const flameLayers: Array<[radius: number, length: number, color: THREE.Color, opacity: number]> = [
-        [15, 70, new THREE.Color(player.team === 0 ? 0x2f8cff : 0xff7a1a).multiplyScalar(2.5), 0.55],
-        [8, 45, new THREE.Color(1, 0.95, 0.85).multiplyScalar(4), 0.8],
-      ];
-      for (const [radius, length, color, opacity] of flameLayers) {
-        const geometry = new THREE.ConeGeometry(radius, length, 16, 1, true);
-        // Point the tip backwards and put the base at the group's origin.
-        geometry.rotateZ(Math.PI / 2);
-        geometry.translate(-length / 2, 0, 0);
-        const layer = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
-          color,
-          transparent: true,
-          opacity,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-          side: THREE.DoubleSide,
-        }));
-        boostFlame.add(layer);
+      const exhausts = getCarExhausts(player.car_body_id, player.car_hitbox_family);
+      for (const exhaust of exhausts) {
+        const jet = createFlameJet(player.team);
+        jet.position.set(exhaust.x, exhaust.y, exhaust.z);
+        boostFlame.add(jet);
       }
-      boostFlame.position.set(-hitbox.length / 2, hitbox.height / 2, 0);
       boostFlame.visible = false;
       carGroup.add(boostFlame);
 
@@ -358,6 +363,21 @@ export class CarManager {
       entity.isModelLoaded = true;
       entity.wheels = wheels;
       this.updateWheelRotation(entity);
+
+      // If the model has Turbo_L / Turbo_R bones (like Fennec), snap boost flame jets to their exact bones
+      const turboBones: THREE.Object3D[] = [];
+      glbScene.traverse((child) => {
+        if (child.name && /^Turbo_(L|R)$/i.test(child.name)) {
+          turboBones.push(child);
+        }
+      });
+      if (turboBones.length >= 2 && entity.boostFlame.children.length === turboBones.length) {
+        turboBones.sort((a, b) => a.position.z - b.position.z);
+        const jets = [...entity.boostFlame.children].sort((a, b) => a.position.z - b.position.z);
+        for (let i = 0; i < turboBones.length; i++) {
+          jets[i].position.copy(turboBones[i].position).multiplyScalar(100);
+        }
+      }
     } catch (err) {
       console.warn('[CarManager] Failed to load GLB car model:', err);
       // Keep procedural chassis
@@ -432,7 +452,9 @@ export class CarManager {
         const speed = Math.hypot(velocity.x, velocity.y, velocity.z);
         const length = (0.8 + 0.6 * Math.min(speed / SUPERSONIC_SPEED_THRESHOLD, 1)) * (0.85 + Math.random() * 0.3);
         const width = 0.9 + Math.random() * 0.2;
-        entity.boostFlame.scale.set(length, width, width);
+        for (const jet of entity.boostFlame.children) {
+          jet.scale.set(length, width, width);
+        }
       }
     }
     if (this.groundShadows) {

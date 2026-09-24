@@ -388,4 +388,35 @@ describe('Boost plume', () => {
     sampleBoostPlume(boosting, 0, 15, 15 * FRAME_SECONDS, car, exhaust, 0.4, (_x, _y, _z, age) => ages.push(age));
     expect(Math.max(...ages)).toBeLessThanOrEqual(4 * FRAME_SECONDS + 1e-6);
   });
+
+  it('streams out of dual exhausts on both sides of the car', () => {
+    const dualExhausts = [
+      { x: -50, y: 11, z: -14 },
+      { x: -50, y: 11, z: 14 },
+    ];
+    const particles: { x: number; y: number; z: number; age: number; variant: number }[] = [];
+    const car = {
+      position: { x: 25.5 * 2300 * FRAME_SECONDS, y: 17, z: 0 },
+      rotation: { x: 0, y: 0, z: 0, w: 1 },
+      velocity: { x: 2300, y: 0, z: 0 },
+    };
+    sampleBoostPlume(data, 0, Math.floor(25.5), 25.5 * FRAME_SECONDS, car, dualExhausts, 0.4, (x, y, z, age, variant) => {
+      particles.push({ x, y, z, age, variant });
+    });
+
+    // Dual exhausts emit twice as many particles as a single exhaust
+    expect(particles.length).toBeGreaterThanOrEqual(160);
+
+    // Initial particles near the car are clearly separated laterally around the exhausts
+    const newestLeft = particles.find((p) => p.z < 0)!;
+    const newestRight = particles.find((p) => p.z > 0)!;
+    expect(newestLeft.z).toBeLessThan(-5);
+    expect(newestRight.z).toBeGreaterThan(5);
+
+    // Both sides emit continuous streams of particles
+    const nearLeft = particles.filter((p) => p.age < 0.15 && p.z < 0);
+    const nearRight = particles.filter((p) => p.age < 0.15 && p.z > 0);
+    expect(nearLeft.length).toBeGreaterThanOrEqual(25);
+    expect(nearRight.length).toBeGreaterThanOrEqual(25);
+  });
 });

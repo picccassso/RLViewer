@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { CarManager, applyTeamPaint } from '../CarManager';
-import { carModelFor, carDisplayName } from '../carBodies';
+import { carModelFor, carDisplayName, getCarExhausts } from '../carBodies';
 import { StadiumManager } from '../StadiumManager';
 import { BallManager, BALL_RADIUS } from '../BallManager';
 import { BoostPadManager } from '../BoostPadManager';
@@ -731,6 +731,54 @@ describe('Scene Graph & Manager Integrity Verification', () => {
     cars.updateCars(frameState, null);
     expect(nameplate0?.visible).toBe(true);
     expect(nameplate1?.visible).toBe(true);
+
+    cars.dispose();
+  });
+
+  it('provides dual exhaust positions on both sides for Fennec and Octane', () => {
+    // Octane (bodyId: 23)
+    const octaneExhausts = getCarExhausts(23, 'Octane');
+    expect(octaneExhausts).toHaveLength(2);
+    expect(octaneExhausts[0].z).toBeLessThan(0); // Left side
+    expect(octaneExhausts[1].z).toBeGreaterThan(0); // Right side
+    expect(Math.abs(octaneExhausts[0].z)).toBeCloseTo(Math.abs(octaneExhausts[1].z), 1);
+    expect(octaneExhausts[0].x).toBeLessThan(-45); // Near rear bumper
+
+    // Fennec (bodyId: 4284)
+    const fennecExhausts = getCarExhausts(4284, 'Octane');
+    expect(fennecExhausts).toHaveLength(2);
+    expect(fennecExhausts[0].z).toBeLessThan(0); // Left side
+    expect(fennecExhausts[1].z).toBeGreaterThan(0); // Right side
+    expect(Math.abs(fennecExhausts[0].z)).toBeCloseTo(Math.abs(fennecExhausts[1].z), 1);
+    expect(fennecExhausts[0].x).toBeLessThan(-50); // Near rear bumper
+  });
+
+  it('CarManager: spawns dual boost flame jets on both sides of the car', () => {
+    const scene = new THREE.Scene();
+    const cars = new CarManager(scene);
+    const players = createMockPlayers(); // p0: Octane, p2: Fennec
+    cars.initCars(players);
+
+    // Player 0 (Octane)
+    const entity0 = (cars as any).carEntities.get(0);
+    expect(entity0.boostFlame.children).toHaveLength(2);
+    const [jet0Left, jet0Right] = entity0.boostFlame.children;
+    expect(jet0Left.position.z).toBeLessThan(0);
+    expect(jet0Right.position.z).toBeGreaterThan(0);
+
+    // Player 2 (Fennec)
+    const entity2 = (cars as any).carEntities.get(2);
+    expect(entity2.boostFlame.children).toHaveLength(2);
+    const [jet2Left, jet2Right] = entity2.boostFlame.children;
+    expect(jet2Left.position.z).toBeLessThan(0);
+    expect(jet2Right.position.z).toBeGreaterThan(0);
+
+    // Scaling during boost updates both flame jets
+    const frameState = createMockFrameState();
+    frameState.players[0].boostActive = true;
+    cars.updateCars(frameState);
+    expect(jet0Left.scale.x).toBeGreaterThan(0.5);
+    expect(jet0Right.scale.x).toBeGreaterThan(0.5);
 
     cars.dispose();
   });
