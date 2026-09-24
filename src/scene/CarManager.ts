@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { PlayerInfo, FrameState } from '../types/replay';
+import { carModelFor } from './carBodies';
 
 // Octane Hitbox: 118.01 length (X), 36.16 height (Y), 84.20 width (Z)
 export const HITBOX_DIMENSIONS: Record<string, { length: number; width: number; height: number }> = {
@@ -30,6 +31,39 @@ function createNameplate(info: PlayerInfo): THREE.Object3D {
   const nameplate = new CSS2DObject(element);
   nameplate.center.set(0.5, 1); // anchored at its bottom centre
   return nameplate;
+}
+
+const TEAM_PAINT = [new THREE.Color(0x1d6bff), new THREE.Color(0xff5a00)];
+
+/**
+ * Car textures are white where the paint goes and grey, black or coloured for trims, lights and glass.
+ * Tinting the whole texture turns those details the team colour too, so only the near-white,
+ * colourless texels take the paint; that paint also gets a faint glow so cars read against the pitch.
+ */
+export function applyTeamPaint(mat: THREE.MeshStandardMaterial, team: 0 | 1) {
+  const paint = TEAM_PAINT[team];
+  mat.roughness = 0.38;
+  mat.metalness = 0.2;
+  mat.envMapIntensity = 0.8;
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.teamPaint = { value: paint };
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec3 teamPaint;')
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+        vec3 baseTexel = diffuseColor.rgb;
+        float texelLuma = sqrt(dot(baseTexel, vec3(0.2126, 0.7152, 0.0722))); // about sRGB brightness
+        float texelChroma = max(max(baseTexel.r, baseTexel.g), baseTexel.b) - min(min(baseTexel.r, baseTexel.g), baseTexel.b);
+        float paintMask = smoothstep(0.6, 0.85, texelLuma) * (1.0 - smoothstep(0.05, 0.15, texelChroma));
+        diffuseColor.rgb = mix(baseTexel, baseTexel * teamPaint, paintMask);`
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        '#include <emissivemap_fragment>\ntotalEmissiveRadiance += teamPaint * paintMask * 0.12;'
+      );
+  };
+  mat.customProgramCacheKey = () => 'team-paint';
 }
 
 interface CarEntity {
@@ -182,21 +216,7 @@ export class CarManager {
     fallbackMesh: THREE.Mesh,
     cabinMesh: THREE.Mesh
   ) {
-    const hitboxFamily = (player.car_hitbox_family || 'Octane').toLowerCase();
-    const modelName = hitboxFamily.includes('fennec')
-      ? 'fennec'
-      : hitboxFamily.includes('dominus')
-      ? 'dominus'
-      : hitboxFamily.includes('breakout')
-      ? 'breakout'
-      : hitboxFamily.includes('merc')
-      ? 'merc'
-      : (hitboxFamily.includes('mantis') || hitboxFamily.includes('plank'))
-      ? 'mantis'
-      : (hitboxFamily.includes('x-devil') || hitboxFamily.includes('hybrid'))
-      ? 'x-devil'
-      : 'octane';
-
+    const modelName = carModelFor(player.car_body_id, player.car_hitbox_family);
     const path = `/models/cars/${modelName}/${modelName}.glb`;
 
     try {
@@ -251,10 +271,7 @@ export class CarManager {
         console.warn('[CarManager] Could not attach wheels:', wheelErr);
       }
 
-      // Recolor car paint according to team: deep, saturated paint with a faint glow of its
-      // own and toned-down reflections, so cars read clearly against the lit pitch.
-      const paintColor = player.team === 0 ? 0x1d6bff : 0xff5a00;
-      const paintGlow = player.team === 0 ? 0x0a4dff : 0xff4400;
+      // Paint the body panels in the team colour and leave the chassis, trims, lights and glass as modelled.
       glbScene.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const m = child as THREE.Mesh;
@@ -262,11 +279,8 @@ export class CarManager {
           m.receiveShadow = true;
           if (m.material) {
             const mat = (m.material as THREE.MeshStandardMaterial).clone();
-            if (/chassis|body|paint|car/i.test(mat.name || '')) {
-              mat.color.setHex(paintColor);
-              mat.emissive.setHex(paintGlow);
-              mat.emissiveIntensity = 0.18;
-              mat.envMapIntensity = 0.6;
+            if (/body/i.test(mat.name || '') && !/chassis/i.test(mat.name || '')) {
+              applyTeamPaint(mat, player.team);
             }
             m.material = mat;
           }

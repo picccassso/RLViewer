@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { CarManager } from '../CarManager';
+import { CarManager, applyTeamPaint } from '../CarManager';
+import { carModelFor, carDisplayName } from '../carBodies';
 import { StadiumManager } from '../StadiumManager';
 import { BallManager, BALL_RADIUS } from '../BallManager';
 import { BoostPadManager } from '../BoostPadManager';
@@ -371,6 +372,56 @@ describe('Scene Graph & Manager Integrity Verification', () => {
     verify(scene);
 
     carManager.dispose();
+  });
+
+  it('carModelFor: picks the car by body id, falling back to its hitbox family', () => {
+    // The Fennec shares the Octane hitbox, so its family alone would draw it as an Octane
+    expect(carModelFor(4284, 'Octane')).toBe('fennec');
+    expect(carDisplayName(4284, 'Octane')).toBe('Fennec');
+    expect(carModelFor(23, 'Octane')).toBe('octane');
+    expect(carModelFor(1018, 'Dominus')).toBe('dominus');
+    // Cars without a model of their own use one with the same hitbox
+    expect(carModelFor(99999, 'Plank')).toBe('mantis');
+    expect(carModelFor(99999, 'Hybrid')).toBe('x-devil');
+    expect(carModelFor(99999, 'Breakout')).toBe('breakout');
+    expect(carModelFor(0, '')).toBe('octane');
+    expect(carDisplayName(99999, 'Plank')).toBe('Plank');
+  });
+
+  it('CarManager: loads the Fennec model for a Fennec even though it has an Octane hitbox', async () => {
+    const scene = new THREE.Scene();
+    const carManager = new CarManager(scene);
+    const requested: string[] = [];
+    (carManager as any).gltfLoader.loadAsync = async (url: string) => {
+      requested.push(url);
+      return url.includes('Wheel_Boog') ? createSimulatedWheelGLTF() : createSimulatedCarGLTF('fennec');
+    };
+    carManager.initCars([
+      { ...createMockPlayers()[0], car_body_id: 4284, car_hitbox_family: 'Octane' },
+    ]);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(requested).toContain('/models/cars/fennec/fennec.glb');
+    expect(requested).not.toContain('/models/cars/octane/octane.glb');
+    carManager.dispose();
+  });
+
+  it('applyTeamPaint: patches the paint mask into the standard material shader', () => {
+    const mat = new THREE.MeshStandardMaterial({ name: 'Octane_Body' });
+    applyTeamPaint(mat, 1);
+    const shader = {
+      uniforms: {} as Record<string, THREE.IUniform>,
+      fragmentShader: THREE.ShaderLib.physical.fragmentShader,
+      vertexShader: THREE.ShaderLib.physical.vertexShader,
+    };
+    mat.onBeforeCompile(shader as any, undefined as any);
+    expect(shader.uniforms.teamPaint.value).toBeInstanceOf(THREE.Color);
+    expect(shader.fragmentShader).toContain('uniform vec3 teamPaint;');
+    expect(shader.fragmentShader).toContain('float paintMask =');
+    expect(shader.fragmentShader).toContain('totalEmissiveRadiance += teamPaint * paintMask');
+    // The mask is declared before the emissive term uses it
+    expect(shader.fragmentShader.indexOf('float paintMask =')).toBeLessThan(
+      shader.fragmentShader.indexOf('teamPaint * paintMask')
+    );
   });
 
   it('StadiumManager: constructs arena, lights, targets, and cleans up without cycles', () => {

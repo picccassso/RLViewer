@@ -1,5 +1,6 @@
 import React from 'react';
 import { FrameState } from '../types/replay';
+import { carDisplayName } from '../scene/carBodies';
 
 interface PlayerTelemetryProps {
   frameState: FrameState | null;
@@ -36,7 +37,7 @@ export const PlayerTelemetry: React.FC<PlayerTelemetryProps> = ({
           {player?.info.name || 'Spectator'}
         </div>
         <div className="text-[9px] text-slate-500 uppercase tracking-[0.12em] mt-0.5">
-          {player?.info.car_hitbox_family || 'Octane'}
+          {player ? carDisplayName(player.info.car_body_id, player.info.car_hitbox_family) : 'Octane'}
         </div>
       </div>
 
