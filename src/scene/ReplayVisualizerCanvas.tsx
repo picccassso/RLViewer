@@ -45,6 +45,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const lastHudUpdateRef = useRef<number>(0);
+  const appliedSeekRef = useRef<{ time: number; id: number } | null>(null);
 
   // References to three.js scene managers
   const managersRef = useRef<{
@@ -152,9 +153,12 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     managersRef.current?.cars.setNameplatesVisible(showHud);
   }, [showHud]);
 
-  // Apply explicit user seek actions (timeline scrubbing, clicking event marks, frame stepping)
+  // Apply explicit user seek actions (timeline scrubbing, clicking event marks, frame stepping).
+  // Each seek applies once: this effect also re-runs on pause, camera and player changes,
+  // which must not rewind the clock to the last seek.
   useEffect(() => {
-    if (!managersRef.current || !seekTarget) return;
+    if (!managersRef.current || !seekTarget || seekTarget === appliedSeekRef.current) return;
+    appliedSeekRef.current = seekTarget;
 
     const diff = Math.abs(managersRef.current.clockTime - seekTarget.time);
     managersRef.current.clockTime = seekTarget.time;
