@@ -11,7 +11,7 @@
     "camera:compare": "vitest run src/camera/__tests__/cameraCapture.test.ts"
   },
   "dependencies": {
-    "@rlrml/subtr-actor": "^1.2.0",
+    "@rlrml/subtr-actor": "file:vendor/subtr-actor",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

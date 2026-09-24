@@ -13,6 +13,19 @@ function getWorker(): Worker {
 }
 
 /**
+ * Turns the parser's raw error into something a person can act on. The raw error is
+ * already logged by the worker.
+ */
+export function describeParseError(message: string): string {
+  // Each Rocket League update can add replicated attributes, and the parser cannot skip
+  // one it doesn't know: the network stream doesn't record attribute sizes.
+  if (/attribute unknown or not implemented/i.test(message)) {
+    return 'This replay was recorded on a newer version of Rocket League than the replay parser supports yet. It will open once the parser is updated.';
+  }
+  return message;
+}
+
+/**
  * Parses a Rocket League .replay file client-side inside a Web Worker.
  * Returns the typed memory streaming payload.
  */
@@ -27,7 +40,7 @@ export async function parseReplayBuffer(buffer: ArrayBuffer): Promise<ParsedRepl
         resolve(payload as ParsedReplayData);
       } else if (type === 'PARSE_ERROR') {
         worker.removeEventListener('message', handleMessage);
-        reject(new Error(error || 'Replay parsing failed'));
+        reject(new Error(describeParseError(error || 'Replay parsing failed')));
       }
     };
 

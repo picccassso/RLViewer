@@ -1,0 +1,34 @@
+{
+  "name": "@rlrml/subtr-actor",
+  "version": "1.2.0-season24.1",
+  "description": "subtr-actor 1.2.0 WASM bindings rebuilt with Season 24 replay support (nickbabcock/boxcars#296). See README.md.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rlrml/subtr-actor.git",
+    "directory": "js"
+  },
+  "keywords": [
+    "rocket-league",
+    "replay",
+    "wasm",
+    "webassembly",
+    "parsing"
+  ],
+  "author": "Ivan Malison <ivanmalison@gmail.com>",
+  "license": "MIT",
+  "files": [
+    "rl_replay_subtr_actor_bg.wasm",
+    "rl_replay_subtr_actor.js",
+    "rl_replay_subtr_actor.d.ts",
+    "README.md"
+  ],
+  "main": "rl_replay_subtr_actor.js",
+  "types": "rl_replay_subtr_actor.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
