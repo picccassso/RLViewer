@@ -52,7 +52,7 @@ export function buildBallTouches(
   toPlaybackTime: (frame: number) => number
 ): BallTouch[] {
   return rawTouchEvents
-    .map((e): BallTouch => ({ time: toPlaybackTime(e.frame), team: e.team_is_team_0 ? 0 : 1 }))
+    .map((e): BallTouch => ({ time: toPlaybackTime(e.frame), team: e.team_is_team_0 ? 0 : 1, flip: Boolean(e.dodge_contact) }))
     .sort((a, b) => a.time - b.time);
 }
 

@@ -96,6 +96,7 @@ describe('Frame Unpacker & Interpolation', () => {
       tickMarks: [],
       teamScores: { team0: 0, team1: 0 },
       flipResets: [],
+      demolitions: [],
       ballTouches: [],
       framesBuffer: buffer
     };
@@ -159,6 +160,7 @@ describe('Frame Unpacker & Interpolation', () => {
       tickMarks: [],
       teamScores: { team0: 0, team1: 0 },
       flipResets: [],
+      demolitions: [],
       ballTouches: [],
       framesBuffer: buffer,
     };

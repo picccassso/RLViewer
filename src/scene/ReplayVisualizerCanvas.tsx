@@ -9,6 +9,7 @@ import { BoostPadManager } from './BoostPadManager';
 import { BallManager } from './BallManager';
 import { CarManager } from './CarManager';
 import { TrailManager } from './TrailManager';
+import { ImpactEffects } from './ImpactEffects';
 import { CameraSuite, CameraMode } from '../camera/CameraSuite';
 import { CameraSettings } from '../math/cameraMath';
 
@@ -74,6 +75,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     ball: BallManager;
     cars: CarManager;
     trails: TrailManager;
+    impacts: ImpactEffects;
     cameraSuite: CameraSuite;
     lastTime: number;
     clockTime: number;
@@ -123,6 +125,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     const ball = new BallManager(scene);
     const cars = new CarManager(scene);
     const trails = new TrailManager(scene);
+    const impacts = new ImpactEffects(scene);
 
     managersRef.current = {
       renderer,
@@ -134,6 +137,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       ball,
       cars,
       trails,
+      impacts,
       cameraSuite,
       lastTime: performance.now(),
       clockTime: 0,
@@ -161,6 +165,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       ball.dispose();
       cars.dispose();
       trails.dispose();
+      impacts.dispose();
       postProcessing.dispose();
       labelRenderer.domElement.remove();
       renderer.dispose();
@@ -172,11 +177,12 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
   useEffect(() => {
     if (!replayData || !managersRef.current) return;
 
-    const { boostPads, cars, trails } = managersRef.current;
+    const { boostPads, cars, trails, impacts } = managersRef.current;
     boostPads.initPads(replayData.boostPads);
     cars.initCars(replayData.players);
     cars.setFlipResets(replayData.flipResets);
     trails.setReplay(replayData);
+    impacts.setReplay(replayData);
 
     // Reset clock
     managersRef.current.clockTime = 0;
@@ -214,7 +220,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
 
     // When paused, immediately unpack and render the target frame for snappy feedback
     if (!isPlaying && replayData) {
-      const { postProcessing, labelRenderer, scene, stadium, cameraSuite, boostPads, ball, cars, trails } = managersRef.current;
+      const { postProcessing, labelRenderer, scene, stadium, cameraSuite, boostPads, ball, cars, trails, impacts } = managersRef.current;
       const { frameA, frameB, alpha } = getFrameSampleAtTime(replayData, seekTarget.time);
 
       const frameState = unpackFrame(replayData, frameA, frameB, alpha);
@@ -222,6 +228,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       ball.update(frameState.ball.position, frameState.ball.rotation);
       cars.updateCars(frameState, activePov);
       trails.update(frameState);
+      impacts.update(frameState.time);
       boostPads.updateStates(frameState.boostPadsAvailable, 0.016);
       cameraSuite.update(frameState, 0.016);
       stadium.setSightline(cameraSuite.camera.position, cameraSuite.followTarget);
@@ -246,7 +253,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       animId = requestAnimationFrame(renderLoop);
       if (now - managersRef.current.lastTime < MIN_FRAME_MS) return;
 
-      const { postProcessing, labelRenderer, scene, stadium, cameraSuite, boostPads, ball, cars, trails } = managersRef.current;
+      const { postProcessing, labelRenderer, scene, stadium, cameraSuite, boostPads, ball, cars, trails, impacts } = managersRef.current;
       const delta = Math.min((now - managersRef.current.lastTime) / 1000, 0.1);
       managersRef.current.lastTime = now;
 
@@ -269,6 +276,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       ball.update(frameState.ball.position, frameState.ball.rotation);
       cars.updateCars(frameState, activePov);
       trails.update(frameState);
+      impacts.update(frameState.time);
       boostPads.updateStates(frameState.boostPadsAvailable, delta);
 
       // Update Camera. Its smoothing runs on the replay clock, so at 2x the camera moves

@@ -1,4 +1,5 @@
 import {
+  Demolition,
   ParsedReplayData,
   PlayerInfo,
   ReplayBoostPad,
@@ -165,6 +166,15 @@ export function buildReplayData(rawData: any): ParsedReplayData {
 
   const ballTouches = buildBallTouches(rawData.touch_events ?? [], playbackTimeAtFrame);
 
+  const demolitions: Demolition[] = rawDemos
+    .filter((d: any) => d.victim_location)
+    .map((d: any): Demolition => {
+      const attacker = players.find((p) => p.id === JSON.stringify(d.attacker));
+      const position = rlToThreeVec3(d.victim_location);
+      return { time: playbackTimeAtFrame(d.frame), position: { x: position.x, y: position.y, z: position.z }, team: attacker?.team ?? 0 };
+    })
+    .sort((a: Demolition, b: Demolition) => a.time - b.time);
+
   // Boost Pad Clock Manager for bitmasks
   const padClock = new BoostPadClockManager(
     boostPads.map(bp => ({
@@ -325,6 +335,7 @@ export function buildReplayData(rawData: any): ParsedReplayData {
     teamScores: finalScores,
     flipResets,
     ballTouches,
+    demolitions,
     framesBuffer
   };
 }

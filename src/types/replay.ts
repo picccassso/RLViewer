@@ -44,6 +44,17 @@ export interface BallTouch {
   time: number;
   /** Team of the player who touched the ball. */
   team: 0 | 1;
+  /** The touch was made with a flip. */
+  flip?: boolean;
+}
+
+export interface Demolition {
+  /** Playback time of the demolition. */
+  time: number;
+  /** Where the victim was blown up, in Three.js space. */
+  position: { x: number; y: number; z: number };
+  /** Team of the attacker. */
+  team: 0 | 1;
 }
 
 export interface ParsedReplayData {
@@ -58,6 +69,8 @@ export interface ParsedReplayData {
   flipResets: number[][];
   /** Every touch of the ball, sorted by time. */
   ballTouches: BallTouch[];
+  /** Every demolition, sorted by time. */
+  demolitions: Demolition[];
   framesBuffer: Float32Array; // Stride = TOTAL_FLOATS_PER_FRAME
 }
 

@@ -51,6 +51,7 @@ function syntheticReplay(
     tickMarks: [],
     teamScores: { team0: 0, team1: 0 },
     flipResets: [],
+      demolitions: [],
     ballTouches,
     framesBuffer,
   };
@@ -129,16 +130,16 @@ describe('Ball touches', () => {
   it('re-times touch events and finds the latest touch', () => {
     const touches = buildBallTouches(
       [
-        { frame: 60, team_is_team_0: false },
+        { frame: 60, team_is_team_0: false, dodge_contact: true },
         { frame: 30, team_is_team_0: true },
       ],
       (frame) => frame / 30
     );
-    expect(touches).toEqual([{ time: 1, team: 0 }, { time: 2, team: 1 }]);
+    expect(touches).toEqual([{ time: 1, team: 0, flip: false }, { time: 2, team: 1, flip: true }]);
     expect(lastTouchAt(touches, 0.5)).toBeNull();
-    expect(lastTouchAt(touches, 1)).toEqual({ time: 1, team: 0 });
-    expect(lastTouchAt(touches, 1.9)).toEqual({ time: 1, team: 0 });
-    expect(lastTouchAt(touches, 5)).toEqual({ time: 2, team: 1 });
+    expect(lastTouchAt(touches, 1)).toMatchObject({ time: 1, team: 0 });
+    expect(lastTouchAt(touches, 1.9)).toMatchObject({ time: 1, team: 0 });
+    expect(lastTouchAt(touches, 5)).toMatchObject({ time: 2, team: 1 });
   });
 });
 
