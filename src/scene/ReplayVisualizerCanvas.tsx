@@ -8,6 +8,7 @@ import { PostProcessing } from './PostProcessing';
 import { BoostPadManager } from './BoostPadManager';
 import { BallManager } from './BallManager';
 import { CarManager } from './CarManager';
+import { TrailManager } from './TrailManager';
 import { CameraSuite, CameraMode } from '../camera/CameraSuite';
 import { CameraSettings } from '../math/cameraMath';
 
@@ -72,6 +73,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     boostPads: BoostPadManager;
     ball: BallManager;
     cars: CarManager;
+    trails: TrailManager;
     cameraSuite: CameraSuite;
     lastTime: number;
     clockTime: number;
@@ -120,6 +122,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     const boostPads = new BoostPadManager(scene);
     const ball = new BallManager(scene);
     const cars = new CarManager(scene);
+    const trails = new TrailManager(scene);
 
     managersRef.current = {
       renderer,
@@ -130,6 +133,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       boostPads,
       ball,
       cars,
+      trails,
       cameraSuite,
       lastTime: performance.now(),
       clockTime: 0,
@@ -156,6 +160,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       boostPads.dispose();
       ball.dispose();
       cars.dispose();
+      trails.dispose();
       postProcessing.dispose();
       labelRenderer.domElement.remove();
       renderer.dispose();
@@ -167,11 +172,11 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
   useEffect(() => {
     if (!replayData || !managersRef.current) return;
 
-    const { boostPads, cars, ball } = managersRef.current;
+    const { boostPads, cars, trails } = managersRef.current;
     boostPads.initPads(replayData.boostPads);
     cars.initCars(replayData.players);
     cars.setFlipResets(replayData.flipResets);
-    ball.resetTrail();
+    trails.setReplay(replayData);
 
     // Reset clock
     managersRef.current.clockTime = 0;
@@ -204,19 +209,19 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     const diff = Math.abs(managersRef.current.clockTime - seekTarget.time);
     managersRef.current.clockTime = seekTarget.time;
     if (diff > 0.4) {
-      managersRef.current.ball.resetTrail();
       managersRef.current.cameraSuite.snap();
     }
 
     // When paused, immediately unpack and render the target frame for snappy feedback
     if (!isPlaying && replayData) {
-      const { postProcessing, labelRenderer, scene, stadium, cameraSuite, boostPads, ball, cars } = managersRef.current;
+      const { postProcessing, labelRenderer, scene, stadium, cameraSuite, boostPads, ball, cars, trails } = managersRef.current;
       const { frameA, frameB, alpha } = getFrameSampleAtTime(replayData, seekTarget.time);
 
       const frameState = unpackFrame(replayData, frameA, frameB, alpha);
       const activePov = cameraMode === 'pov' ? activePlayerIndex : null;
       ball.update(frameState.ball.position, frameState.ball.rotation);
       cars.updateCars(frameState, activePov);
+      trails.update(frameState);
       boostPads.updateStates(frameState.boostPadsAvailable, 0.016);
       cameraSuite.update(frameState, 0.016);
       stadium.setSightline(cameraSuite.camera.position, cameraSuite.followTarget);
@@ -241,7 +246,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       animId = requestAnimationFrame(renderLoop);
       if (now - managersRef.current.lastTime < MIN_FRAME_MS) return;
 
-      const { postProcessing, labelRenderer, scene, stadium, cameraSuite, boostPads, ball, cars } = managersRef.current;
+      const { postProcessing, labelRenderer, scene, stadium, cameraSuite, boostPads, ball, cars, trails } = managersRef.current;
       const delta = Math.min((now - managersRef.current.lastTime) / 1000, 0.1);
       managersRef.current.lastTime = now;
 
@@ -263,6 +268,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       const activePov = cameraMode === 'pov' ? activePlayerIndex : null;
       ball.update(frameState.ball.position, frameState.ball.rotation);
       cars.updateCars(frameState, activePov);
+      trails.update(frameState);
       boostPads.updateStates(frameState.boostPadsAvailable, delta);
 
       // Update Camera

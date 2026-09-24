@@ -39,6 +39,13 @@ export interface ReplayBoostPad {
   position: { x: number; y: number; z: number }; // In Three.js space
 }
 
+export interface BallTouch {
+  /** Playback time of the touch. */
+  time: number;
+  /** Team of the player who touched the ball. */
+  team: 0 | 1;
+}
+
 export interface ParsedReplayData {
   totalFrames: number;
   duration: number; // total match seconds
@@ -49,6 +56,8 @@ export interface ParsedReplayData {
   teamScores: { team0: number; team1: number };
   /** Playback times of each player's flip resets, indexed like `players`, sorted. */
   flipResets: number[][];
+  /** Every touch of the ball, sorted by time. */
+  ballTouches: BallTouch[];
   framesBuffer: Float32Array; // Stride = TOTAL_FLOATS_PER_FRAME
 }
 
@@ -74,6 +83,8 @@ export interface FrameState {
     powerslideActive: boolean;
     jumpActive: boolean;
     dodgeActive: boolean;
+    /** Supersonic as the game counts it: from 2200 uu/s until the car drops below 2100 uu/s. */
+    supersonic: boolean;
   }>;
   boostPadsAvailable: boolean[]; // 34 booleans
 }

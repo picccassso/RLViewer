@@ -7,6 +7,7 @@ import {
   FLOATS_PER_PLAYER,
   MAX_PLAYERS
 } from '../types/replay';
+import { SUPERSONIC_FLAG } from './trails';
 
 const META_TIME_OFFSET = FLOATS_PER_BALL + (MAX_PLAYERS * FLOATS_PER_PLAYER);
 
@@ -126,6 +127,7 @@ export function unpackFrame(
     const powerslideActive = (flags & 16) !== 0;
     const jumpActive = (flags & 32) !== 0;
     const dodgeActive = (flags & 64) !== 0;
+    const supersonic = (flags & SUPERSONIC_FLAG) !== 0;
 
     // Do not blend a live car towards an absent/demo placeholder frame. That
     // otherwise produces a one-frame dart towards the origin before hiding.
@@ -164,7 +166,8 @@ export function unpackFrame(
       boostActive,
       powerslideActive,
       jumpActive,
-      dodgeActive
+      dodgeActive,
+      supersonic
     });
   }
 

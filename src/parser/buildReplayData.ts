@@ -12,6 +12,7 @@ import { BoostPadClockManager } from '../math/boostPadClock';
 import { smoothReplayPositions } from '../math/motionSmoothing';
 import { buildTickMarks, readFinalScore } from './tickMarks';
 import { buildFlipResets } from '../math/flipReset';
+import { buildBallTouches, nextSupersonic, SUPERSONIC_FLAG } from '../math/trails';
 
 /**
  * Builds the viewer's frame buffer and metadata from subtr-actor's
@@ -162,6 +163,8 @@ export function buildReplayData(rawData: any): ParsedReplayData {
     playbackTimeAtFrame
   );
 
+  const ballTouches = buildBallTouches(rawData.touch_events ?? [], playbackTimeAtFrame);
+
   // Boost Pad Clock Manager for bitmasks
   const padClock = new BoostPadClockManager(
     boostPads.map(bp => ({
@@ -177,6 +180,7 @@ export function buildReplayData(rawData: any): ParsedReplayData {
   const framesBuffer = new Float32Array(totalFrames * TOTAL_FLOATS_PER_FRAME);
   const ballHasTransform = new Uint8Array(totalFrames);
   const uint32View = new Uint32Array(framesBuffer.buffer);
+  const supersonic = new Array<boolean>(MAX_PLAYERS).fill(false);
   for (let f = 0; f < totalFrames; f++) {
     const frameOffset = f * TOTAL_FLOATS_PER_FRAME;
     const metaF = metadataFrames[f];
@@ -247,6 +251,7 @@ export function buildReplayData(rawData: any): ParsedReplayData {
           // Check if player is demoed (within 3 seconds of a demo)
           const demoFrames = demosByVictim.get(players[p].id) ?? [];
           const isDemoed = demoFrames.some(df => f >= df && f < df + 90); // ~90 frames = 3s
+          supersonic[p] = !isDemoed && nextSupersonic(supersonic[p], Math.hypot(pVel.x, pVel.y, pVel.z));
 
           // Flags bitmask
           let flags = 1; // bit 0: isPresent
@@ -256,6 +261,7 @@ export function buildReplayData(rawData: any): ParsedReplayData {
           if (pFrame.Data.powerslide_active) flags |= 16;
           if (pFrame.Data.jump_active) flags |= 32;
           if (pFrame.Data.dodge_active) flags |= 64;
+          if (supersonic[p]) flags |= SUPERSONIC_FLAG;
 
           framesBuffer[pOffset + 11] = flags;
         } else {
@@ -270,6 +276,7 @@ export function buildReplayData(rawData: any): ParsedReplayData {
             framesBuffer[pOffset + 6] = 1; // rot.w
           }
           framesBuffer[pOffset + 11] = 0; // isPresent = false
+          supersonic[p] = false;
         }
       } else {
         framesBuffer[pOffset + 6] = 1;
@@ -317,6 +324,7 @@ export function buildReplayData(rawData: any): ParsedReplayData {
     tickMarks,
     teamScores: finalScores,
     flipResets,
+    ballTouches,
     framesBuffer
   };
 }

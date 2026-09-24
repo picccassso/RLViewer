@@ -9,9 +9,6 @@ export class BallManager {
   private ballMesh: THREE.Mesh;
   private groundIndicator: THREE.Mesh;
   private groundLine: THREE.Line;
-  private trailMesh: THREE.Line;
-  private trailPositions: THREE.Vector3[] = [];
-  private readonly maxTrailPoints = 40;
   private isDisposed: boolean = false;
 
   constructor(scene: THREE.Scene) {
@@ -135,17 +132,6 @@ export class BallManager {
     });
     this.groundLine = new THREE.Line(lineGeo, lineMat);
     this.scene.add(this.groundLine);
-
-    // Trajectory trail
-    const trailGeo = new THREE.BufferGeometry();
-    const trailMat = new THREE.LineBasicMaterial({
-      color: 0x60a5fa,
-      transparent: true,
-      opacity: 0.55,
-      linewidth: 2,
-    });
-    this.trailMesh = new THREE.Line(trailGeo, trailMat);
-    this.scene.add(this.trailMesh);
   }
 
   public update(
@@ -174,28 +160,6 @@ export class BallManager {
       ]);
       this.groundLine.geometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
     }
-
-    // Trajectory trail
-    const currentPos = new THREE.Vector3(position.x, position.y, position.z);
-    this.trailPositions.push(currentPos);
-    if (this.trailPositions.length > this.maxTrailPoints) {
-      this.trailPositions.shift();
-    }
-
-    if (this.trailPositions.length > 1) {
-      const trailPoints = new Float32Array(this.trailPositions.length * 3);
-      for (let i = 0; i < this.trailPositions.length; i++) {
-        trailPoints[i * 3 + 0] = this.trailPositions[i].x;
-        trailPoints[i * 3 + 1] = this.trailPositions[i].y;
-        trailPoints[i * 3 + 2] = this.trailPositions[i].z;
-      }
-      this.trailMesh.geometry.setAttribute('position', new THREE.BufferAttribute(trailPoints, 3));
-      this.trailMesh.geometry.attributes.position.needsUpdate = true;
-    }
-  }
-
-  public resetTrail() {
-    this.trailPositions = [];
   }
 
   public getPosition(): THREE.Vector3 {
@@ -207,13 +171,10 @@ export class BallManager {
     this.scene.remove(this.ballGroup);
     this.scene.remove(this.groundIndicator);
     this.scene.remove(this.groundLine);
-    this.scene.remove(this.trailMesh);
 
     this.groundIndicator.geometry.dispose();
     (this.groundIndicator.material as THREE.Material).dispose();
     this.groundLine.geometry.dispose();
     (this.groundLine.material as THREE.Material).dispose();
-    this.trailMesh.geometry.dispose();
-    (this.trailMesh.material as THREE.Material).dispose();
   }
 }

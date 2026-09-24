@@ -73,6 +73,7 @@ function createMockFrameState(): FrameState {
         powerslideActive: false,
         jumpActive: false,
         dodgeActive: false,
+        supersonic: false,
       },
       {
         info: {
@@ -95,6 +96,7 @@ function createMockFrameState(): FrameState {
         powerslideActive: false,
         jumpActive: false,
         dodgeActive: false,
+        supersonic: false,
       },
     ],
     boostPadsAvailable: Array.from({ length: 34 }, (_, i) => i % 3 !== 0),
