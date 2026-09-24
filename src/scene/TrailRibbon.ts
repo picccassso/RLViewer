@@ -6,6 +6,7 @@ const MIN_POINT_SPACING = 1; // uu
 const vertexShader = /* glsl */ `
   attribute float side;
   attribute vec3 trailDirection;
+  attribute vec3 trailNormal;
   attribute float trailAlpha;
   attribute float trailHalfWidth;
   uniform float faceCamera;
@@ -15,8 +16,8 @@ const vertexShader = /* glsl */ `
 
   void main() {
     vec3 world = (modelMatrix * vec4(position, 1.0)).xyz;
-    // Widen across the path, facing the camera, or flat on the floor.
-    vec3 facing = faceCamera > 0.5 ? normalize(cameraPosition - world) : vec3(0.0, 1.0, 0.0);
+    // Widen across the path, facing the camera, or flat on the surface it lies on.
+    vec3 facing = faceCamera > 0.5 ? normalize(cameraPosition - world) : trailNormal;
     vec3 across = cross(trailDirection, facing);
     float acrossLength = length(across);
     across = acrossLength > 1e-5 ? across / acrossLength : vec3(0.0);
@@ -49,8 +50,8 @@ const fragmentShader = /* glsl */ `
 
 export interface TrailRibbonOptions {
   maxPoints: number;
-  /** 'camera' turns the ribbon to face the viewer; 'up' lays it flat on the floor. */
-  facing: 'camera' | 'up';
+  /** 'camera' turns the ribbon to face the viewer; 'surface' lays it flat along each point's normal. */
+  facing: 'camera' | 'surface';
   color: THREE.Color;
   /** Above 1 the trail is brighter than white and blooms. */
   intensity: number;
@@ -66,6 +67,7 @@ export class TrailRibbon {
   private readonly maxPoints: number;
   private readonly centres: Float32Array;
   private readonly directions: Float32Array;
+  private readonly normals: Float32Array;
   private readonly alphas: Float32Array;
   private readonly halfWidths: Float32Array;
   private count = 0;
@@ -77,6 +79,7 @@ export class TrailRibbon {
     const vertices = maxPoints * 2;
     this.centres = new Float32Array(vertices * 3);
     this.directions = new Float32Array(vertices * 3);
+    this.normals = new Float32Array(vertices * 3);
     this.alphas = new Float32Array(vertices);
     this.halfWidths = new Float32Array(vertices);
     const sides = new Float32Array(vertices);
@@ -92,6 +95,7 @@ export class TrailRibbon {
     geometry.setIndex(indices);
     geometry.setAttribute('position', dynamicAttribute(this.centres, 3));
     geometry.setAttribute('trailDirection', dynamicAttribute(this.directions, 3));
+    geometry.setAttribute('trailNormal', dynamicAttribute(this.normals, 3));
     geometry.setAttribute('trailAlpha', dynamicAttribute(this.alphas, 1));
     geometry.setAttribute('trailHalfWidth', dynamicAttribute(this.halfWidths, 1));
     geometry.setAttribute('side', new THREE.BufferAttribute(sides, 1));
@@ -109,8 +113,8 @@ export class TrailRibbon {
       transparent: true,
       depthWrite: false,
       side: THREE.DoubleSide,
-      // Keeps floor trails from flickering into the turf far from the camera.
-      polygonOffset: facing === 'up',
+      // Keeps surface trails from flickering into the turf and walls far from the camera.
+      polygonOffset: facing === 'surface',
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -4,
     });
@@ -131,8 +135,15 @@ export class TrailRibbon {
     this.anyVisible = false;
   }
 
-  /** Adds the next point along the path. Returns false once the ribbon is full. */
-  public push(x: number, y: number, z: number, alpha: number, halfWidth: number): boolean {
+  /**
+   * Adds the next point along the path, with the normal of the surface it lies on for
+   * 'surface' ribbons. Returns false once the ribbon is full.
+   */
+  public push(
+    x: number, y: number, z: number,
+    alpha: number, halfWidth: number,
+    nx = 0, ny = 1, nz = 0
+  ): boolean {
     if (this.count >= this.maxPoints) return false;
     if (this.count > 0) {
       const p = (this.count - 1) * 6;
@@ -145,6 +156,9 @@ export class TrailRibbon {
       this.centres[i] = x;
       this.centres[i + 1] = y;
       this.centres[i + 2] = z;
+      this.normals[i] = nx;
+      this.normals[i + 1] = ny;
+      this.normals[i + 2] = nz;
       this.alphas[v + side] = alpha;
       this.halfWidths[v + side] = halfWidth;
     }
@@ -171,7 +185,7 @@ export class TrailRibbon {
     }
 
     const vertices = count * 2;
-    for (const name of ['position', 'trailDirection', 'trailAlpha', 'trailHalfWidth']) {
+    for (const name of ['position', 'trailDirection', 'trailNormal', 'trailAlpha', 'trailHalfWidth']) {
       const attribute = geometry.getAttribute(name) as THREE.BufferAttribute;
       attribute.clearUpdateRanges();
       attribute.addUpdateRange(0, vertices * attribute.itemSize);

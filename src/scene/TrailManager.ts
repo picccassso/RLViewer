@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { FrameState, ParsedReplayData } from '../types/replay';
-import { isOnFloor, sampleBallTrail, sampleCarWheelTrail } from '../math/trails';
+import { isOnSurface, sampleBallTrail, sampleCarWheelTrail } from '../math/trails';
 import { Vec3 } from '../math/coords';
 import { HITBOX_DIMENSIONS } from './CarManager';
 import { TrailRibbon } from './TrailRibbon';
@@ -11,8 +11,8 @@ export const BALL_TRAIL_SECONDS = 1.5;
 export const SUPERSONIC_TRAIL_SECONDS = 0.5;
 /** Replays run at up to ~120 recorded frames a second, plus the interpolated head. */
 const POINTS_PER_SECOND = 120;
-/** Streaks sit just above the turf, under the ball's ground ring and the car shadows. */
-const FLOOR_TRAIL_HEIGHT = 1.5;
+/** Streaks sit just off the surface, under the ball's ground ring and the car shadows. */
+const SURFACE_TRAIL_LIFT = 1.5;
 
 const TEAM_TRAIL_COLORS = [new THREE.Color(0x2f8cff), new THREE.Color(0xff7a1a)];
 
@@ -25,7 +25,7 @@ interface CarTrail {
  * Glowing trails, drawn from the recorded frames around the current time so they look
  * the same when paused, scrubbing or at any playback speed:
  * - the ball's path since its last touch, in the colour of the team that touched it;
- * - streaks behind the back wheels of supersonic cars driving on the floor.
+ * - streaks behind the back wheels of supersonic cars driving on the floor, walls, ramps or ceiling.
  */
 export class TrailManager {
   private readonly group = new THREE.Group();
@@ -54,7 +54,7 @@ export class TrailManager {
       const wheels = [-track, track].map((side) => {
         const ribbon = new TrailRibbon({
           maxPoints: Math.ceil(SUPERSONIC_TRAIL_SECONDS * POINTS_PER_SECOND) + 2,
-          facing: 'up',
+          facing: 'surface',
           color: TEAM_TRAIL_COLORS[player.team],
           intensity: 1.8,
         });
@@ -84,14 +84,15 @@ export class TrailManager {
       const car = player && {
         position: player.position,
         rotation: player.rotation,
-        lit: player.isPresent && !player.isDemoed && player.supersonic && isOnFloor(player.position.y, player.rotation),
+        lit: player.isPresent && !player.isDemoed && player.supersonic && isOnSurface(player.position, player.rotation),
       };
       for (const { offset, ribbon } of trail.wheels) {
         ribbon.clear();
         if (car) {
-          sampleCarWheelTrail(data, trail.playerIndex, frameIndex, time, car, offset, SUPERSONIC_TRAIL_SECONDS, (x, _y, z, age, lit) => {
+          sampleCarWheelTrail(data, trail.playerIndex, frameIndex, time, car, offset, SUPERSONIC_TRAIL_SECONDS, (x, y, z, nx, ny, nz, age, lit) => {
             const life = 1 - age / SUPERSONIC_TRAIL_SECONDS;
-            ribbon.push(x, FLOOR_TRAIL_HEIGHT, z, lit ? 0.85 * life : 0, 5 + 5 * life);
+            const lift = SURFACE_TRAIL_LIFT;
+            ribbon.push(x + nx * lift, y + ny * lift, z + nz * lift, lit ? 0.85 * life : 0, 5 + 5 * life, nx, ny, nz);
           });
         }
         ribbon.commit();
