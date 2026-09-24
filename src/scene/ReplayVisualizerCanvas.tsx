@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { ParsedReplayData, FrameState } from '../types/replay';
 import { getFrameSampleAtTime, unpackFrame } from '../math/frameUnpacker';
 import { StadiumManager } from './StadiumManager';
+import { PostProcessing } from './PostProcessing';
 import { BoostPadManager } from './BoostPadManager';
 import { BallManager } from './BallManager';
 import { CarManager } from './CarManager';
@@ -50,6 +51,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
   // References to three.js scene managers
   const managersRef = useRef<{
     renderer: THREE.WebGLRenderer;
+    postProcessing: PostProcessing;
     scene: THREE.Scene;
     stadium: StadiumManager;
     boostPads: BoostPadManager;
@@ -72,27 +74,33 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     // 1. WebGL Renderer
     const renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: true,
+      // Anti-aliasing happens in the post-processing scene target; the canvas only gets a fullscreen quad.
+      antialias: false,
       powerPreference: 'high-performance',
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    renderer.toneMappingExposure = 1.0;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    const postProcessing = new PostProcessing(renderer, width, height);
 
     // 2. Scene
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x060913);
 
     // 3. Subsystem Managers
     const cameraSuite = new CameraSuite(canvas, width / height);
+    (window as any).__TMP_DEBUG = { scene, renderer, cameraSuite, postProcessing };
     const stadium = new StadiumManager(scene);
+    stadium.initEnvironment(renderer);
     const boostPads = new BoostPadManager(scene);
     const ball = new BallManager(scene);
     const cars = new CarManager(scene);
 
     managersRef.current = {
       renderer,
+      postProcessing,
       scene,
       stadium,
       boostPads,
@@ -109,6 +117,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       const newW = container.clientWidth;
       const newH = container.clientHeight;
       managersRef.current.renderer.setSize(newW, newH);
+      managersRef.current.postProcessing.setSize(newW, newH);
       managersRef.current.cameraSuite.handleResize(newW, newH);
     };
     window.addEventListener('resize', handleResize);
@@ -120,6 +129,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       boostPads.dispose();
       ball.dispose();
       cars.dispose();
+      postProcessing.dispose();
       renderer.dispose();
       managersRef.current = null;
     };
@@ -169,7 +179,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
 
     // When paused, immediately unpack and render the target frame for snappy feedback
     if (!isPlaying && replayData) {
-      const { renderer, scene, stadium, cameraSuite, boostPads, ball, cars } = managersRef.current;
+      const { postProcessing, scene, stadium, cameraSuite, boostPads, ball, cars } = managersRef.current;
       const { frameA, frameB, alpha } = getFrameSampleAtTime(replayData, seekTarget.time);
 
       const frameState = unpackFrame(replayData, frameA, frameB, alpha);
@@ -179,7 +189,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       boostPads.updateStates(frameState.boostPadsAvailable, 0.016);
       cameraSuite.update(frameState, 0.016);
       stadium.setSightline(cameraSuite.camera.position, cameraSuite.followTarget);
-      renderer.render(scene, cameraSuite.camera);
+      postProcessing.render(scene, cameraSuite.camera);
 
       onTimeUpdate(seekTarget.time, frameState.frameIndex, frameState);
     }
@@ -193,7 +203,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       animId = requestAnimationFrame(renderLoop);
       if (!managersRef.current || !replayData) return;
 
-      const { renderer, scene, stadium, cameraSuite, boostPads, ball, cars } = managersRef.current;
+      const { postProcessing, scene, stadium, cameraSuite, boostPads, ball, cars } = managersRef.current;
       const delta = Math.min((now - managersRef.current.lastTime) / 1000, 0.1);
       managersRef.current.lastTime = now;
 
@@ -222,7 +232,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       stadium.setSightline(cameraSuite.camera.position, cameraSuite.followTarget);
 
       // Render
-      renderer.render(scene, cameraSuite.camera);
+      postProcessing.render(scene, cameraSuite.camera);
 
       // Callback to React HUD throttled to ~30 FPS during playback
       // to keep the Three.js 60-144 FPS render loop buttery smooth

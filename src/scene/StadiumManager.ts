@@ -1,7 +1,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
-import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import {
+  BLUE_LIGHT,
+  ORANGE_LIGHT,
+  createArenaEnvironment,
+  createNightSkyTexture,
+  withTeamLightWash,
+} from './ArenaAtmosphere';
 
 export const FIELD_WIDTH = 8192;   // X: -4096 to +4096
 export const FIELD_LENGTH = 10240; // Z: -5120 to +5120
@@ -16,6 +22,28 @@ const SIGHTLINE_CAR_RADIUS = 110;
 /** Trim this close to the car centre is never cut away, so the surface it drives on stays. */
 const SIGHTLINE_CAR_CLEARANCE = 70;
 
+/**
+ * The pitch is a stack of coplanar layers: team colour and turf at the bottom, dark hex
+ * tiles whose see-through seams let the team colour glow through, then line decals. Each
+ * layer gets its own depth offset and draw order so they never z-fight.
+ */
+const FLOOR_LAYERS: Record<string, number> = {
+  Sol_Hexagone: 1,
+  Sol_Trait_T0: 2,
+  Sol_Trait_T1: 2,
+  Detail_Milieu: 2,
+  Hexagone_T0: 2,
+  Hexagone_T1: 2,
+  Blanc: 3,
+};
+
+function floorLayer(material: THREE.Material): number {
+  return FLOOR_LAYERS[material.name.replace(/\.\d+$/, '')] ?? 0;
+}
+
+/** Stadium meshes flatter than this are pitch surface and receive shadows. */
+const FLOOR_MAX_HEIGHT = 200;
+
 /** Glass walls and hexagon overlays are already see-through; they are left alone. */
 const SEE_THROUGH_MATERIAL = /^(Vitre|Hexagone_T[01])$/i;
 
@@ -27,6 +55,9 @@ export class StadiumManager {
   private proceduralFieldGroup: THREE.Group;
   private lightsGroup: THREE.Group;
   private isDisposed: boolean = false;
+  private maxAnisotropy = 1;
+  private skyTexture: THREE.Texture | null = null;
+  private environment: THREE.Texture | null = null;
   // Shared by every stadium trim material: the camera-to-car sightline to keep clear.
   private sightlineUniforms = {
     uSightFrom: { value: new THREE.Vector3() },
@@ -52,48 +83,138 @@ export class StadiumManager {
 
     this.setupLighting();
     this.setupProceduralArena();
-    this.loadSkybox();
+    this.applyNightSky();
     this.loadStadiumGLB();
   }
 
   private setupLighting() {
-    // Ambient light for base visibility
-    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
-    this.lightsGroup.add(ambient);
-
-    // Hemisphere light: Sky blue/cyan, ground dark turf
-    const hemiLight = new THREE.HemisphereLight(0x60a5fa, 0x064e3b, 0.45);
+    // Cool night sky above, warm turf bounce below.
+    const hemiLight = new THREE.HemisphereLight(0xb8c8ff, 0x2c4a2a, 0.55);
     this.lightsGroup.add(hemiLight);
 
-    // Main stadium directional light
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    dirLight.position.set(2000, 3500, 2000);
-    dirLight.target.position.set(0, 0, 0);
-    this.lightsGroup.add(dirLight);
-    this.lightsGroup.add(dirLight.target);
+    // Floodlight key: nearly overhead so cars and the ball cast short, readable shadows.
+    const floodlight = new THREE.DirectionalLight(0xfff1dc, 1.9);
+    floodlight.position.set(1400, 6000, 900);
+    floodlight.castShadow = true;
+    floodlight.shadow.mapSize.set(2048, 2048);
+    const shadowCam = floodlight.shadow.camera;
+    shadowCam.left = -5600;
+    shadowCam.right = 5600;
+    shadowCam.top = 6400;
+    shadowCam.bottom = -6400;
+    shadowCam.near = 1000;
+    shadowCam.far = 9000;
+    floodlight.shadow.bias = -0.0004;
+    floodlight.shadow.normalBias = 2;
+    floodlight.shadow.radius = 3;
+    this.lightsGroup.add(floodlight, floodlight.target);
+
+    // Team rim lights: each goal washes its colour onto whatever faces it.
+    const blueRim = new THREE.DirectionalLight(BLUE_LIGHT, 1.4);
+    blueRim.position.set(-800, 1400, -6000);
+    const orangeRim = new THREE.DirectionalLight(ORANGE_LIGHT, 1.4);
+    orangeRim.position.set(800, 1400, 6000);
+    this.lightsGroup.add(blueRim, blueRim.target, orangeRim, orangeRim.target);
   }
 
-  private loadSkybox() {
-    try {
-      const rgbeLoader = new RGBELoader();
-      rgbeLoader.load(
-        '/skyboxes/PlanetaryEarth4k.hdr',
-        (texture) => {
-          texture.mapping = THREE.EquirectangularReflectionMapping;
-          this.scene.background = texture;
-          this.scene.environment = texture;
-          this.scene.backgroundBlurriness = 0.3;
-        },
-        undefined,
-        (err) => {
-          console.warn('Could not load HDR skybox, using procedural atmosphere:', err);
-          this.scene.background = new THREE.Color(0x050811);
-        }
-      );
-    } catch (err) {
-      console.warn('Could not load HDR skybox, using procedural atmosphere:', err);
-      this.scene.background = new THREE.Color(0x050811);
+  private applyNightSky() {
+    const sky = createNightSkyTexture();
+    this.scene.background = sky ?? new THREE.Color(0x0c1140);
+    this.skyTexture = sky;
+  }
+
+  /** Builds the stadium reflection environment. Needs the renderer, so the canvas calls it. */
+  public initEnvironment(renderer: THREE.WebGLRenderer) {
+    // The pitch is mostly seen at grazing angles; without anisotropic filtering its lines smear.
+    this.maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+    this.environment?.dispose();
+    this.environment = createArenaEnvironment(renderer);
+    this.scene.environment = this.environment;
+  }
+
+  /**
+   * Retunes the stadium model's materials for the floodlit look: non-metallic turf that
+   * catches the light, glowing team trims, LED ad boards and goal frames.
+   */
+  private gradeStadiumMaterial(mat: THREE.MeshStandardMaterial) {
+    const team = /_T0$/.test(mat.name) ? BLUE_LIGHT : /_T1$/.test(mat.name) ? ORANGE_LIGHT : null;
+    for (const texture of [mat.map, mat.emissiveMap]) {
+      if (texture) texture.anisotropy = this.maxAnisotropy;
     }
+    switch (mat.name.replace(/\.\d+$/, '')) {
+      case 'Herbe':
+        mat.metalness = 0;
+        mat.roughness = 0.9;
+        // Kept a notch darker than the cars, and only lightly reflective, so they stand out on it.
+        mat.color.setRGB(0.36, 0.6, 0.33);
+        mat.envMapIntensity = 0.5;
+        withTeamLightWash(mat, 0.3);
+        break;
+      case 'Sol_Hexagone':
+      case 'Detail_Milieu':
+      case 'Centre':
+        mat.metalness = 0.15;
+        break;
+      case 'Sol_T1':
+      case 'Goutière':
+        mat.metalness = 0.3;
+        break;
+      case 'bannière_pub':
+        // LED advertising boards.
+        mat.metalness = 0;
+        mat.emissive.setRGB(1, 1, 1);
+        mat.emissiveMap = mat.map;
+        mat.emissiveIntensity = 0.9;
+        break;
+      case 'Metal':
+        mat.color.setRGB(0.08, 0.085, 0.1);
+        mat.roughness = 0.4;
+        break;
+      case 'Hexagone_T0':
+      case 'Hexagone_T1':
+        // Dome panels: a faint team-coloured glow instead of a mirror.
+        mat.metalness = 0.2;
+        mat.emissive.copy(team!);
+        mat.emissiveIntensity = 0.35;
+        mat.transparent = true;
+        mat.opacity = 0.3;
+        mat.depthWrite = false;
+        break;
+      case 'Couleur_T0':
+      case 'Couleur_T1':
+        mat.emissive.copy(team!);
+        mat.emissiveIntensity = 0.35;
+        break;
+      case 'Cage_T0':
+      case 'Cage_T1':
+        mat.emissiveIntensity = 2.2;
+        break;
+      case 'Sol_Trait_T0':
+      case 'Sol_Trait_T1':
+        // Team lines on the pitch: dimmed so they don't compete with same-team cars driving over
+        // them. At grazing angles the floodlight reflections turned them a glowing lavender.
+        mat.color.multiplyScalar(0.45);
+        mat.roughness = 0.9;
+        mat.envMapIntensity = 0.3;
+        mat.emissive.copy(team!);
+        mat.emissiveMap = mat.map;
+        mat.emissiveIntensity = 0.1;
+        break;
+      case 'dégradé_transparent_T0':
+      case 'dégradé_transparent_T1':
+        // Glow bands running round the walls.
+        mat.emissive.copy(team!);
+        mat.emissiveMap = mat.map;
+        mat.emissiveIntensity = 1.4;
+        break;
+    }
+    const layer = floorLayer(mat);
+    if (layer) {
+      mat.polygonOffset = true;
+      mat.polygonOffsetFactor = -layer;
+      mat.polygonOffsetUnits = -layer * 2;
+    }
+    mat.needsUpdate = true;
   }
 
   /**
@@ -339,25 +460,25 @@ export class StadiumManager {
 
       model.updateMatrixWorld(true);
       const sightlineMaterials = new Map<THREE.Material, THREE.Material>();
+      const graded = new Set<THREE.Material>();
       model.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
 
-          // Preserve materials, tune transparency & depth
-          if (mesh.material) {
-            const mat = mesh.material as THREE.MeshStandardMaterial;
-            if (mat.name && /Hexagone_T[01]/i.test(mat.name)) {
-              mat.transparent = true;
-              mat.opacity = 0.35;
-              mat.depthWrite = false;
-            }
+          const height = new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).y;
+          // Only the flat pitch catches the floodlight shadows; filtering them on walls and dome costs for nothing.
+          mesh.receiveShadow = height < FLOOR_MAX_HEIGHT;
+          if (!Array.isArray(mesh.material)) mesh.renderOrder = floorLayer(mesh.material);
+          const source = mesh.material as THREE.MeshStandardMaterial;
+          if (!Array.isArray(mesh.material) && source.isMeshStandardMaterial && !graded.has(source)) {
+            graded.add(source);
+            this.gradeStadiumMaterial(source);
           }
 
           // The POV camera passes through the arena walls like in Rocket League, so
           // trim outside the pitch (ad boards, rails, gutters) must not hide the car.
           // Flat floor pieces are skipped: the car may be sitting on them.
           const mat = mesh.material as THREE.Material;
-          const height = new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).y;
           if (!Array.isArray(mesh.material) && height >= 20 && !SEE_THROUGH_MATERIAL.test(mat.name)) {
             let patched = sightlineMaterials.get(mat);
             if (!patched) {
@@ -440,6 +561,10 @@ if (uSightActive > 0.5) {
     this.scene.remove(this.stadiumGroup);
     this.scene.remove(this.proceduralFieldGroup);
     this.scene.remove(this.lightsGroup);
+    if (this.scene.background === this.skyTexture) this.scene.background = null;
+    if (this.scene.environment === this.environment) this.scene.environment = null;
+    this.skyTexture?.dispose();
+    this.environment?.dispose();
     this.dracoLoader.dispose();
   }
 }

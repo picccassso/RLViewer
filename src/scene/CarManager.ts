@@ -248,8 +248,10 @@ export class CarManager {
         console.warn('[CarManager] Could not attach wheels:', wheelErr);
       }
 
-      // Recolor car paint according to team
-      const teamColor = player.team === 0 ? 0x0088ff : 0xff6600;
+      // Recolor car paint according to team: deep, saturated paint with a faint glow of its
+      // own and toned-down reflections, so cars read clearly against the lit pitch.
+      const paintColor = player.team === 0 ? 0x1d6bff : 0xff5a00;
+      const paintGlow = player.team === 0 ? 0x0a4dff : 0xff4400;
       glbScene.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const m = child as THREE.Mesh;
@@ -258,7 +260,10 @@ export class CarManager {
           if (m.material) {
             const mat = (m.material as THREE.MeshStandardMaterial).clone();
             if (/chassis|body|paint|car/i.test(mat.name || '')) {
-              mat.color.setHex(teamColor);
+              mat.color.setHex(paintColor);
+              mat.emissive.setHex(paintGlow);
+              mat.emissiveIntensity = 0.18;
+              mat.envMapIntensity = 0.6;
             }
             m.material = mat;
           }
