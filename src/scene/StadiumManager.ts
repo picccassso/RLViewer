@@ -6,7 +6,9 @@ import {
   ORANGE_LIGHT,
   createArenaEnvironment,
   createNightSkyTexture,
+  withCrowdSpeckle,
   withTeamLightWash,
+  withTeamSideGlow,
 } from './ArenaAtmosphere';
 
 export const FIELD_WIDTH = 8192;   // X: -4096 to +4096
@@ -47,6 +49,47 @@ const FLOOR_MAX_HEIGHT = 200;
 /** Glass walls and hexagon overlays are already see-through; they are left alone. */
 const SEE_THROUGH_MATERIAL = /^(Vitre|Hexagone_T[01])$/i;
 
+/** Night-time materials for the stadium surroundings model, picked by mesh name. */
+function createSurroundingsMaterials() {
+  const standard = (color: number, roughness: number, metalness: number, emissive = 0x000000, emissiveIntensity = 1) =>
+    new THREE.MeshStandardMaterial({ color, roughness, metalness, emissive, emissiveIntensity });
+
+  const structure = standard(0x1b2036, 0.75, 0.25);
+  const seats = standard(0x2a2f52, 0.8, 0.1);
+  const marble = standard(0x3b3e4c, 0.6, 0.2);
+  const gold = standard(0xffb347, 0.35, 1);
+  const grass = standard(0x1d3a22, 0.95, 0);
+  const water = standard(0x0c1a3a, 0.1, 0.6);
+  const crowd = withCrowdSpeckle(standard(0x6a6f8a, 0.9, 0, 0x2a2f45));
+  // LED banners, ads and the lit band round the roof glow in their end's team colour.
+  const teamLit = withTeamSideGlow(standard(0x10131f, 0.5, 0.2), 0.6);
+  const lamps = standard(0xfff1dc, 0.5, 0, 0xfff1dc, 1.5);
+  const glass = new THREE.MeshStandardMaterial({
+    color: 0x9fb4ff,
+    roughness: 0.1,
+    metalness: 0.6,
+    transparent: true,
+    opacity: 0.12,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+
+  return {
+    pick(meshName: string, materialName: string): THREE.Material | null {
+      if (/Crowd/.test(meshName)) return crowd;
+      if (/Banners|ads_01|plaque|Stadium_Top/.test(meshName)) return teamLit;
+      if (/Statue_Lights/.test(meshName)) return lamps;
+      if (/Seats/.test(meshName)) return seats;
+      if (/Ground_Grass|Planter/.test(meshName)) return grass;
+      if (/Water/.test(meshName)) return water;
+      if (/Glass$|Base_Glass/.test(meshName)) return glass;
+      if (/Statue_Gold/.test(materialName)) return gold;
+      if (/Marbre/.test(materialName) || /Statue/.test(meshName)) return marble;
+      return structure;
+    },
+  };
+}
+
 export class StadiumManager {
   private scene: THREE.Scene;
   private gltfLoader: GLTFLoader;
@@ -54,6 +97,7 @@ export class StadiumManager {
   private stadiumGroup: THREE.Group;
   private proceduralFieldGroup: THREE.Group;
   private lightsGroup: THREE.Group;
+  private surroundingsGroup: THREE.Group;
   private isDisposed: boolean = false;
   private maxAnisotropy = 1;
   private skyTexture: THREE.Texture | null = null;
@@ -70,10 +114,12 @@ export class StadiumManager {
     this.stadiumGroup = new THREE.Group();
     this.proceduralFieldGroup = new THREE.Group();
     this.lightsGroup = new THREE.Group();
+    this.surroundingsGroup = new THREE.Group();
 
     this.scene.add(this.stadiumGroup);
     this.scene.add(this.proceduralFieldGroup);
     this.scene.add(this.lightsGroup);
+    this.scene.add(this.surroundingsGroup);
 
     this.dracoLoader = new DRACOLoader();
     this.dracoLoader.setDecoderPath('/draco/');
@@ -85,6 +131,7 @@ export class StadiumManager {
     this.setupProceduralArena();
     this.applyNightSky();
     this.loadStadiumGLB();
+    this.loadSurroundingsGLB();
   }
 
   private setupLighting() {
@@ -502,6 +549,28 @@ export class StadiumManager {
   }
 
   /**
+   * Loads the stands, crowd and grounds around the pitch, seen through the glass walls
+   * and dome like the stadium in Rocket League. The model is untextured, so its
+   * materials are assigned per mesh for the floodlit night look.
+   */
+  private async loadSurroundingsGLB() {
+    try {
+      const gltf = await this.gltfLoader.loadAsync('/models/stadium/arene.glb');
+      if (this.isDisposed) return;
+      const materials = createSurroundingsMaterials();
+      gltf.scene.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const material = materials.pick(mesh.name, (mesh.material as THREE.Material).name);
+        if (material) mesh.material = material;
+      });
+      this.surroundingsGroup.add(gltf.scene);
+    } catch (err) {
+      console.warn('[StadiumManager] Stadium surroundings failed to load:', err);
+    }
+  }
+
+  /**
    * Keeps the line of sight from `from` (the camera) to `to` (the followed car) clear of
    * stadium trim. Pass a null target to disable.
    */
@@ -561,6 +630,7 @@ if (uSightActive > 0.5) {
     this.scene.remove(this.stadiumGroup);
     this.scene.remove(this.proceduralFieldGroup);
     this.scene.remove(this.lightsGroup);
+    this.scene.remove(this.surroundingsGroup);
     if (this.scene.background === this.skyTexture) this.scene.background = null;
     if (this.scene.environment === this.environment) this.scene.environment = null;
     this.skyTexture?.dispose();

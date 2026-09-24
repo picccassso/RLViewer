@@ -164,3 +164,64 @@ totalEmissiveRadiance += diffuseColor.rgb * washColor * washEnd * (0.55 + 0.45 *
   material.customProgramCacheKey = () => `team-wash-${strength}`;
   return material;
 }
+
+/** Adds a world-position varying for the shader patches below. */
+function withWorldPosition(shader: THREE.WebGLProgramParametersWithUniforms, varying: string) {
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', `#include <common>\nvarying vec3 ${varying};`)
+    .replace(
+      '#include <project_vertex>',
+      `#include <project_vertex>\n${varying} = (modelMatrix * vec4(transformed, 1.0)).xyz;`
+    );
+}
+
+/**
+ * Turns a plain crowd mesh into a speckled crowd: every seat-sized cell gets its own
+ * shirt colour and a little light of its own, so the stands read at night.
+ */
+export function withCrowdSpeckle(material: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
+  material.onBeforeCompile = (shader) => {
+    withWorldPosition(shader, 'vCrowdWorldPos');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCrowdWorldPos;')
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+vec3 crowdCell = floor(vCrowdWorldPos / 70.0);
+float crowdHash = fract(sin(dot(crowdCell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+vec3 crowdShirt = 0.55 + 0.45 * cos(6.2831 * (crowdHash + vec3(0.0, 0.33, 0.67)));
+diffuseColor.rgb *= crowdShirt;`
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= crowdShirt;'
+      );
+  };
+  material.customProgramCacheKey = () => 'crowd-speckle';
+  return material;
+}
+
+/**
+ * Lights a material in its end's team colour: blue towards -Z, orange towards +Z, with
+ * a violet blend across the middle.
+ */
+export function withTeamSideGlow(material: THREE.MeshStandardMaterial, strength: number): THREE.MeshStandardMaterial {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uSideBlue = { value: BLUE_LIGHT };
+    shader.uniforms.uSideOrange = { value: ORANGE_LIGHT };
+    withWorldPosition(shader, 'vSideWorldPos');
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nvarying vec3 vSideWorldPos;\nuniform vec3 uSideBlue;\nuniform vec3 uSideOrange;'
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+vec3 sideColor = mix(uSideBlue, uSideOrange, smoothstep(-6000.0, 6000.0, vSideWorldPos.z));
+totalEmissiveRadiance += sideColor * ${strength.toFixed(3)};`
+      );
+  };
+  material.customProgramCacheKey = () => `team-side-glow-${strength}`;
+  return material;
+}

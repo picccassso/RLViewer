@@ -440,8 +440,8 @@ describe('Scene Graph & Manager Integrity Verification', () => {
     // Verify updateMatrixWorld executes cleanly across lights and turf
     expect(() => scene.updateMatrixWorld(true)).not.toThrow();
 
-    // Verify scene children include stadium, procedural field, and lights groups
-    expect(scene.children.length).toBe(3);
+    // Verify scene children include stadium, procedural field, lights and surroundings groups
+    expect(scene.children.length).toBe(4);
 
     // Verify disposal removes groups from the scene
     stadium.dispose();
