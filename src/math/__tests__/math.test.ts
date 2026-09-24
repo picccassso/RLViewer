@@ -11,6 +11,8 @@ import {
 import {
   CAMERA_MIN_HEIGHT,
   CAR_FRAMING_LIMIT_NDC,
+  BALL_CAM_MAX_BALL_NDC,
+  computeBallCamOrbit,
   computeBallCamAim,
   computeCarCamAim,
   DEFAULT_CAMERA_SETTINGS,
@@ -412,6 +414,30 @@ describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
       expect(projectWith(placed, carPos).y).toBeCloseTo(c.carY, 1);
       expect(projectWith(placed, ballPos).y).toBeCloseTo(c.ballY, 1);
     }
+  });
+
+  it('swings under the car to follow a high, distant ball, but not a ball close to the car', () => {
+    // Sample replay at 4:38: Rw9 flies nose up towards a ball 1470 uu above and 670 uu away.
+    // In the broadcast the camera looks steeply up from below the car.
+    const settings = { ...DEFAULT_CAMERA_SETTINGS, height: 100, angle: -5 };
+    const carPos = new THREE.Vector3(8, 397, 724);
+    const ballPos = new THREE.Vector3(-420, 1865, 1238);
+    const heading = ballPos.clone().sub(carPos).setY(0).normalize();
+    const aim = computeBallCamAim(carPos, ballPos, heading).aim;
+    const orbit = computeBallCamOrbit(carPos, ballPos, aim, settings, 1, 16 / 9, BALL_CAM_SHARE);
+    const placed = placeBoomCamera(carPos, aim, settings, 1, 16 / 9, BALL_CAM_SHARE, orbit);
+
+    expect(placed.position.y).toBeLessThan(carPos.y);
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(placed.quaternion);
+    expect(THREE.MathUtils.radToDeg(Math.asin(forward.y))).toBeGreaterThan(35);
+    expect(projectWith(placed, ballPos).y).toBeCloseTo(BALL_CAM_MAX_BALL_NDC, 2);
+    expect(projectWith(placed, carPos).y).toBeCloseTo(-0.56, 1);
+
+    // A ball on the roof needs no swing
+    const roofCar = new THREE.Vector3(2750, 17, -1710);
+    const roofBall = new THREE.Vector3(2728, 150, -1779);
+    const roofAim = computeBallCamAim(roofCar, roofBall, roofBall.clone().sub(roofCar).setY(0).normalize()).aim;
+    expect(computeBallCamOrbit(roofCar, roofBall, roofAim, { ...settings, height: 90, angle: -4 }, 1, 16 / 9, BALL_CAM_SHARE)).toBe(0);
   });
 
   it('keeps the horizon level while Ball Cam turns and pitches up at once', () => {

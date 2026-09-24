@@ -36,6 +36,16 @@ export const CAMERA_MIN_HEIGHT = 30;
  */
 export const BALL_CAM_PITCH_SCALE = 0.15;
 
+/**
+ * Ball Cam keeps the ball at most this high on screen (NDC, 1 = top edge). A ball
+ * higher than that after the view tilt swings the boom under the car, like the game
+ * does for an aerial towards a high, distant ball.
+ */
+export const BALL_CAM_MAX_BALL_NDC = 0.3;
+
+/** Furthest Ball Cam swings the boom under the car. */
+export const BALL_CAM_MAX_ORBIT_RAD = (70 * Math.PI) / 180;
+
 /** The followed car is kept within this fraction of the half-FOV. */
 export const CAR_FRAMING_LIMIT_NDC = 0.8;
 
@@ -255,6 +265,9 @@ export function computeBallCamAim(
  * Like Rocket League, the boom never shortens against the arena: the camera passes
  * through walls and the ceiling (which are see-through from outside), so the car keeps
  * a constant size on screen in corners and along walls.
+ *
+ * `orbitRad` swings the boom and the view up together around the car, so the camera
+ * drops behind and below it while the car keeps its spot on screen.
  */
 export function placeBoomCamera(
   pivot: THREE.Vector3,
@@ -262,9 +275,12 @@ export function placeBoomCamera(
   settings: CameraSettings,
   distanceMultiplier: number = 1,
   aspect: number = 16 / 9,
-  viewPitchShare: number = 0
+  viewPitchShare: number = 0,
+  orbitRad: number = 0
 ): { position: THREE.Vector3; quaternion: THREE.Quaternion } {
   const right = new THREE.Vector3(1, 0, 0).applyQuaternion(aim);
+  // Ball Cam's orbit swings boom and view up together, taking the camera under the car.
+  const orbit = new THREE.Quaternion().setFromAxisAngle(right, orbitRad);
 
   // Part of an upward aim can be taken by tilting the view instead of swinging the
   // boom under the car, so the camera keeps its height for high balls.
@@ -272,7 +288,7 @@ export function placeBoomCamera(
   const upwardElevation = Math.max(0, Math.asin(Math.min(Math.max(aimForward.y, -1), 1)));
   const boomAim = aim.clone().premultiply(
     new THREE.Quaternion().setFromAxisAngle(right, -upwardElevation * Math.min(Math.max(viewPitchShare, 0), 1))
-  );
+  ).premultiply(orbit);
   const back = new THREE.Vector3(0, 0, 1).applyQuaternion(boomAim);
   const up = new THREE.Vector3(0, 1, 0).applyQuaternion(boomAim);
   const offset = back.multiplyScalar(settings.distance * distanceMultiplier).addScaledVector(up, settings.height);
@@ -291,7 +307,7 @@ export function placeBoomCamera(
   }
 
   const position = pivot.clone().add(offset);
-  const quaternion = aim.clone().multiply(
+  const quaternion = aim.clone().premultiply(orbit).multiply(
     new THREE.Quaternion().setFromAxisAngle(AXIS_X, (settings.angle * Math.PI) / 180)
   );
 
@@ -321,6 +337,40 @@ export function placeBoomCamera(
   }
 
   return { position, quaternion };
+}
+
+/**
+ * How far Ball Cam swings the boom under the car (see `placeBoomCamera`) to keep the
+ * ball no higher than `BALL_CAM_MAX_BALL_NDC` on screen. 0 while the view tilt alone
+ * keeps it there, which covers balls close to the car and balls not far above it.
+ */
+export function computeBallCamOrbit(
+  pivot: THREE.Vector3,
+  ballPosition: THREE.Vector3,
+  aim: THREE.Quaternion,
+  settings: CameraSettings,
+  distanceMultiplier: number = 1,
+  aspect: number = 16 / 9,
+  viewPitchShare: number = 1
+): number {
+  const tanHalfV = Math.tan((rlFovToThreeVerticalFov(settings.fov, aspect) * Math.PI) / 360);
+  const limitRad = Math.atan(BALL_CAM_MAX_BALL_NDC * tanHalfV);
+  const ballAngle = (orbitRad: number) => {
+    const placed = placeBoomCamera(pivot, aim, settings, distanceMultiplier, aspect, viewPitchShare, orbitRad);
+    const local = ballPosition.clone().sub(placed.position).applyQuaternion(placed.quaternion.invert());
+    return Math.atan2(local.y, -local.z);
+  };
+
+  if (ballAngle(0) <= limitRad) return 0;
+  if (ballAngle(BALL_CAM_MAX_ORBIT_RAD) > limitRad) return BALL_CAM_MAX_ORBIT_RAD;
+  let low = 0;
+  let high = BALL_CAM_MAX_ORBIT_RAD;
+  for (let i = 0; i < 14; i++) {
+    const mid = (low + high) / 2;
+    if (ballAngle(mid) > limitRad) low = mid;
+    else high = mid;
+  }
+  return high;
 }
 
 /** How far `angle` lies outside [-limit, +limit], signed; 0 when inside. */

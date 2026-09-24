@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   CameraSettings,
   computeBallCamAim,
+  computeBallCamOrbit,
   computeCarCamAim,
   getSpeedDistanceMultiplier,
   placeBoomCamera,
@@ -30,6 +31,7 @@ export class PovCameraRig {
   private aim: THREE.Quaternion = new THREE.Quaternion();
   private carHeading: THREE.Vector3 = new THREE.Vector3(1, 0, 0);
   private distanceMultiplier: number = 1;
+  private orbit: number = 0;
   private lastCarPos: THREE.Vector3 = new THREE.Vector3();
   private hasLastCarPos: boolean = false;
   private needsSnap: boolean = true;
@@ -117,6 +119,7 @@ export class PovCameraRig {
     const maxTurnRate = THREE.MathUtils.degToRad(720 + (300 - 720) * ballCamWeight);
 
     const speedStretch = getSpeedDistanceMultiplier(carVel.length(), stiffness);
+    const snapped = this.needsSnap;
     if (this.needsSnap) {
       this.aim.copy(targetAim);
       this.distanceMultiplier = speedStretch;
@@ -127,7 +130,12 @@ export class PovCameraRig {
     }
 
     // Ball Cam's upward aim tilts the view rather than swinging the boom under the car,
-    // so the camera keeps its height behind the car on the turf and in the air.
-    return placeBoomCamera(carPos, this.aim, settings, this.distanceMultiplier, aspect, ballCamWeight);
+    // so the camera keeps its height behind the car on the turf and in the air. Only a
+    // ball that would still sit too high on screen swings the boom under the car.
+    const targetOrbit = ballCamWeight > 0
+      ? ballCamWeight * computeBallCamOrbit(carPos, ballPos, this.aim, settings, this.distanceMultiplier, aspect, ballCamWeight)
+      : 0;
+    this.orbit = snapped ? targetOrbit : this.orbit + (targetOrbit - this.orbit) * (1 - Math.exp(-rate * deltaTime));
+    return placeBoomCamera(carPos, this.aim, settings, this.distanceMultiplier, aspect, ballCamWeight, this.orbit);
   }
 }
