@@ -143,10 +143,16 @@ export function buildReplayData(rawData: any): ParsedReplayData {
 
   // Replay Tick Marks & Events (Goals, Saves, Demolishes)
   const tickMarks = buildTickMarks(
-    rawData.replay_tick_marks ?? [],
-    rawData.goal_events ?? [],
+    {
+      tickMarks: rawData.replay_tick_marks ?? [],
+      goalEvents: rawData.goal_events ?? [],
+      statEvents: rawData.player_stat_events ?? [],
+    },
     playbackTimeAtFrame,
-    (player) => findMetaPlayer(player)?.meta?.name
+    (player) => {
+      const name = findMetaPlayer(player)?.meta?.name;
+      return name ? { name } : undefined;
+    }
   );
 
   // Boost Pad Clock Manager for bitmasks

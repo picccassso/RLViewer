@@ -14,13 +14,29 @@ import { unpackFrame } from '../frameUnpacker';
 import { FIELD_WIDTH, FIELD_LENGTH, FIELD_CEILING } from '../../scene/StadiumManager';
 import { buildTickMarks, readFinalScore, GOAL_EVENT_MATCH_WINDOW } from '../../parser/tickMarks';
 
+function playerLookup(rawData: any, player: any) {
+  const id = JSON.stringify(player);
+  const match = [...rawData.meta.team_zero, ...rawData.meta.team_one].find(
+    (p: any) => JSON.stringify(p.remote_id) === id
+  );
+  return match ? { name: match.name as string } : undefined;
+}
+
 /** Builds tick marks on the playback clock, the same way the replay worker does. */
 function buildGoalTimeline(rawData: any) {
   const metadataFrames = rawData.frame_data.metadata_frames;
   const baseTime = metadataFrames[0].time;
   const playbackTimeAtFrame = (frame: number) =>
     metadataFrames[Math.min(Math.max(0, frame), metadataFrames.length - 1)].time - baseTime;
-  const tickMarks = buildTickMarks(rawData.replay_tick_marks, rawData.goal_events, playbackTimeAtFrame);
+  const tickMarks = buildTickMarks(
+    {
+      tickMarks: rawData.replay_tick_marks,
+      goalEvents: rawData.goal_events,
+      statEvents: rawData.player_stat_events,
+    },
+    playbackTimeAtFrame,
+    (player) => playerLookup(rawData, player)
+  );
   const goals = tickMarks.filter((tm) => tm.type === 'goal');
   const scoreAt = (time: number) => ({
     team0: goals.filter((tm) => tm.team === 0 && tm.time <= time).length,
@@ -109,6 +125,22 @@ describe('Real Replay End-to-End Integration Verification', () => {
     expect(timeline.scoreAt(timeline.duration)).toEqual({ team0: 2, team1: 1 });
     // Goals sit at the moment they are scored on the playback clock
     expect(timeline.goals.map((g) => Math.round(g.time))).toEqual([29, 94, 287]);
+    // Every save carries its team and the saver
+    const events = timeline.tickMarks
+      .filter((tm) => tm.type !== 'goal')
+      .map((tm) => [tm.type, tm.team, tm.description]);
+    expect(events).toEqual([
+      ['save', 0, 'Blue save by Kiileerrz'],
+      ['save', 1, 'Orange save by zach'],
+      ['save', 1, 'Orange save by reveal'],
+      ['save', 1, 'Orange save by reveal'],
+      ['save', 1, 'Orange save by zach'],
+      ['save', 0, 'Blue save by Rw9'],
+      ['save', 0, 'Blue save by dralii'],
+      ['save', 1, 'Orange save by zach'],
+      ['save', 0, 'Blue save by Kiileerrz'],
+      ['save', 1, 'Orange save by zach'],
+    ]);
 
     // 4. Verify Frame Data & Bounds
     const ballFrames = rawData.frame_data.ball_data.frames;

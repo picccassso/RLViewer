@@ -68,10 +68,14 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
   };
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const markerGroups = React.useMemo(
+    () => groupTimelineMarks(tickMarks, duration),
+    [tickMarks, duration]
+  );
   const speeds = [0.25, 0.5, 1.0, 1.5, 2.0];
 
   return (
-    <div className="w-full bg-slate-950/95 border-t border-white/10 px-3 py-2 flex flex-col gap-1.5 select-none">
+    <div className="w-full bg-slate-950/95 border-t border-white/10 px-3 pt-7 pb-2 flex flex-col gap-1.5 select-none">
       {/* 1. Scrubber Track & Discrete Event Tick Markers */}
       <div
         ref={progressBarRef}
@@ -98,46 +102,38 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
           </div>
         )}
 
-        {/* Discrete Event Tick Markers (Goals, Saves, Demolishes) */}
-        {duration > 0 &&
-          tickMarks.map((tm, idx) => {
-            const markerPercent = (tm.time / duration) * 100;
-            if (markerPercent < 0 || markerPercent > 100) return null;
+        {/* Goal and save icons above the track, as in the game's replay timeline */}
+        {markerGroups.map((group) => (
+          <div
+            key={group.marks[0].frame}
+            className="absolute bottom-full transform -translate-x-1/2 flex flex-col items-center z-10"
+            style={{ left: `${group.percent}%` }}
+          >
+            <div className="flex items-end gap-px">
+              {group.marks.map((tm) => (
+                <button
+                  key={`${tm.type}-${tm.frame}`}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSeekTime(tm.time);
+                  }}
+                  className="relative group/marker cursor-pointer transition-transform hover:scale-125"
+                  aria-label={`${tm.description} at ${formatTime(tm.time)}`}
+                >
+                  {tm.type === 'goal' ? <GoalIcon team={tm.team} /> : <SaveIcon team={tm.team} />}
 
-            const isGoal = tm.type === 'goal';
-            const isSave = tm.type === 'save';
-            const isDemo = tm.type === 'demolish';
-
-            return (
-              <div
-                key={idx}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSeekTime(tm.time);
-                }}
-                className="absolute transform -translate-x-1/2 flex items-center justify-center cursor-pointer z-10 group/marker"
-                style={{ left: `${markerPercent}%` }}
-              >
-                <div
-                  className={`w-0.5 h-3 ${
-                    isGoal
-                      ? 'bg-amber-400'
-                      : isSave
-                      ? 'bg-cyan-400'
-                      : isDemo
-                      ? 'bg-red-400'
-                      : 'bg-white/50'
-                  }`}
-                />
-
-                {/* Marker Tooltip */}
-                <div className="absolute -top-8 hidden group-hover/marker:flex ui-panel px-2 py-1 text-[10px] font-medium text-white whitespace-nowrap z-30 flex-col items-center">
-                  <span>{tm.description || (isGoal ? 'Goal' : isSave ? 'Save' : 'Demo')}</span>
-                  <span className="text-[9px] text-slate-400 font-mono">{formatTime(tm.time)}</span>
-                </div>
-              </div>
-            );
-          })}
+                  {/* Marker Tooltip */}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/marker:flex ui-panel px-2 py-1 text-[10px] font-medium text-white whitespace-nowrap z-30 flex-col items-center">
+                    <span>{tm.description}</span>
+                    <span className="text-[9px] text-slate-400 font-mono">{formatTime(tm.time)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="w-px h-1 bg-white/30" />
+          </div>
+        ))}
 
         {/* Playhead thumb */}
         <div
@@ -226,5 +222,94 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
         </div>
       </div>
     </div>
+  );
+};
+
+/** Marks closer than this share of the timeline sit side by side instead of overlapping. */
+const MARKER_GROUP_SPAN = 0.012;
+
+interface MarkerGroup {
+  percent: number;
+  marks: ReplayTickMark[];
+}
+
+/**
+ * Only goals and saves appear on the in-game replay timeline. Marks that would
+ * overlap are grouped so their icons sit next to each other, centred on the group.
+ */
+function groupTimelineMarks(tickMarks: ReplayTickMark[], duration: number): MarkerGroup[] {
+  if (duration <= 0) return [];
+  const marks = tickMarks
+    .filter((tm) => (tm.type === 'goal' || tm.type === 'save') && tm.time >= 0 && tm.time <= duration)
+    .sort((a, b) => a.time - b.time);
+
+  const groups: ReplayTickMark[][] = [];
+  for (const tm of marks) {
+    const last = groups[groups.length - 1];
+    if (last && (tm.time - last[last.length - 1].time) / duration < MARKER_GROUP_SPAN) last.push(tm);
+    else groups.push([tm]);
+  }
+  return groups.map((group) => ({
+    percent: (group.reduce((sum, tm) => sum + tm.time, 0) / group.length / duration) * 100,
+    marks: group,
+  }));
+}
+
+const TEAM_ICON_COLORS = {
+  0: { fill: '#3b82f6', light: '#93c5fd', dark: '#1e3a8a', glow: 'rgba(59,130,246,0.8)' },
+  1: { fill: '#f97316', light: '#fdba74', dark: '#7c2d12', glow: 'rgba(249,115,22,0.8)' },
+} as const;
+
+/** A small ball with a dark centre panel and seams, shared by both icons. */
+const BallFace: React.FC<{ cx: number; cy: number; r: number; team: 0 | 1 }> = ({ cx, cy, r, team }) => {
+  const c = TEAM_ICON_COLORS[team];
+  const seams = [0, 72, 144, 216, 288].map((deg) => {
+    const a = ((deg - 90) * Math.PI) / 180;
+    return (
+      <line
+        key={deg}
+        x1={cx + Math.cos(a) * r * 0.38}
+        y1={cy + Math.sin(a) * r * 0.38}
+        x2={cx + Math.cos(a) * r}
+        y2={cy + Math.sin(a) * r}
+        stroke={c.dark}
+        strokeWidth={0.8}
+      />
+    );
+  });
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={r} fill={c.light} stroke={c.dark} strokeWidth={0.8} />
+      {seams}
+      <circle cx={cx} cy={cy} r={r * 0.38} fill={c.dark} />
+    </g>
+  );
+};
+
+/** Goal: a spiky burst in the scoring team's colour around a ball. */
+const GoalIcon: React.FC<{ team: 0 | 1 }> = ({ team }) => {
+  const c = TEAM_ICON_COLORS[team];
+  const spikes = 12;
+  const points = Array.from({ length: spikes * 2 }, (_, i) => {
+    const a = (i / (spikes * 2)) * Math.PI * 2;
+    const radius = i % 2 === 0 ? 9.5 : 6.5;
+    return `${10 + Math.cos(a) * radius},${10 + Math.sin(a) * radius}`;
+  }).join(' ');
+  return (
+    <svg width={20} height={20} viewBox="0 0 20 20" style={{ filter: `drop-shadow(0 0 3px ${c.glow})` }}>
+      <polygon points={points} fill={c.fill} />
+      <BallFace cx={10} cy={10} r={5} team={team} />
+    </svg>
+  );
+};
+
+/** Save: a ball in the saving team's colour with a halo above it. */
+const SaveIcon: React.FC<{ team: 0 | 1 }> = ({ team }) => {
+  const c = TEAM_ICON_COLORS[team];
+  return (
+    <svg width={18} height={20} viewBox="0 0 18 20" style={{ filter: `drop-shadow(0 0 3px ${c.glow})` }}>
+      <ellipse cx={9} cy={3.5} rx={5.5} ry={2} fill="none" stroke={c.light} strokeWidth={1.4} />
+      <BallFace cx={9} cy={12.5} r={6.5} team={team} />
+    </svg>
   );
 };

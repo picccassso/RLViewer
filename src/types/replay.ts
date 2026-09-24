@@ -28,6 +28,8 @@ export interface ReplayTickMark {
   team: 0 | 1;
   description: string;
   scorerName?: string;
+  /** Who made the save. */
+  playerName?: string;
 }
 
 export interface ReplayBoostPad {

@@ -229,7 +229,7 @@ export const App: React.FC = () => {
           </div>
 
           {/* 4. Analysis and camera controls */}
-          <div className="absolute bottom-[68px] left-3 z-20 pointer-events-none">
+          <div className="absolute bottom-[88px] left-3 z-20 pointer-events-none">
             <div className="pointer-events-auto flex items-end gap-2">
               <TacticalMinimap
                 frameState={frameState}
@@ -253,7 +253,7 @@ export const App: React.FC = () => {
           </div>
 
           {/* 5. Compact player telemetry */}
-          <div className="absolute bottom-[68px] right-3 z-20 pointer-events-none">
+          <div className="absolute bottom-[88px] right-3 z-20 pointer-events-none">
             <PlayerTelemetry
               frameState={frameState}
               activePlayerIndex={activePlayerIndex}
