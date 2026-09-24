@@ -9,11 +9,8 @@ import {
   Quat
 } from '../coords';
 import {
-  BALL_CAM_VIEW_PITCH_SHARE,
-  BALL_CAM_AIR_VIEW_PITCH_SHARE,
   CAMERA_MIN_HEIGHT,
   CAR_FRAMING_LIMIT_NDC,
-  CAR_MAX_DROP_DEG,
   computeBallCamAim,
   computeCarCamAim,
   DEFAULT_CAMERA_SETTINGS,
@@ -234,12 +231,16 @@ describe('2. Car Cam Boom Rig', () => {
 });
 
 describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
+  // PovCameraRig passes the Ball Cam weight as the view pitch share: all of Ball Cam's
+  // upward aim tilts the view.
+  const BALL_CAM_SHARE = 1;
+
   it('limits the aim for a ball directly overhead and keeps the car in view', () => {
     const carPos = new THREE.Vector3(0, 17, 0);
     const ballCam = computeBallCamAim(carPos, new THREE.Vector3(0, 3000, 0), new THREE.Vector3(1, 0, 0));
     expect(ballCam.elevationRad).toBeLessThanOrEqual(MAX_BALL_ELEVATION_RAD + 1e-6);
 
-    const placed = placeBoomCamera(carPos, ballCam.aim, DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, BALL_CAM_VIEW_PITCH_SHARE);
+    const placed = placeBoomCamera(carPos, ballCam.aim, DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, BALL_CAM_SHARE);
     expect(placed.position.y).toBeGreaterThanOrEqual(CAMERA_MIN_HEIGHT - 1e-6);
     const ndc = projectWith(placed, carPos);
     expect(ndc.y).toBeGreaterThanOrEqual(-CAR_FRAMING_LIMIT_NDC - 1e-6);
@@ -252,7 +253,7 @@ describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
     const carPos = new THREE.Vector3(-4079.0, 362.4, 730.5);
     const ballPos = new THREE.Vector3(-3571.1, 1616.3, 3401.4);
     const ballCam = computeBallCamAim(carPos, ballPos, new THREE.Vector3(0, 0, 1));
-    const placed = placeBoomCamera(carPos, ballCam.aim, DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, BALL_CAM_VIEW_PITCH_SHARE);
+    const placed = placeBoomCamera(carPos, ballCam.aim, DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, BALL_CAM_SHARE);
 
     const carNdc = projectWith(placed, carPos);
     expect(Math.abs(carNdc.x)).toBeLessThanOrEqual(0.8 + 1e-6);
@@ -266,7 +267,7 @@ describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
     const carPos = new THREE.Vector3(0, 17, 0);
     const ballPos = new THREE.Vector3(0, 93, 2000);
     const ballCam = computeBallCamAim(carPos, ballPos, new THREE.Vector3(1, 0, 0));
-    const placed = placeBoomCamera(carPos, ballCam.aim, DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, BALL_CAM_VIEW_PITCH_SHARE);
+    const placed = placeBoomCamera(carPos, ballCam.aim, DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, BALL_CAM_SHARE);
 
     expect(placed.position.z).toBeLessThan(carPos.z - 200);
     const ballNdc = projectWith(placed, ballPos);
@@ -290,7 +291,7 @@ describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
     const ballCam = computeBallCamAim(carPos, highBallPos, new THREE.Vector3(0, 0, -1));
 
     const fullOrbit = placeBoomCamera(carPos, ballCam.aim, settings, 1, 16 / 9, 0);
-    const shared = placeBoomCamera(carPos, ballCam.aim, settings, 1, 16 / 9, BALL_CAM_VIEW_PITCH_SHARE);
+    const shared = placeBoomCamera(carPos, ballCam.aim, settings, 1, 16 / 9, BALL_CAM_SHARE);
     expect(shared.position.y).toBeGreaterThan(fullOrbit.position.y + 20);
     expect(fullOrbit.position.y).toBeGreaterThanOrEqual(CAMERA_MIN_HEIGHT - 1e-6);
 
@@ -329,12 +330,10 @@ describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
     ];
     for (const [carPos, ballPos] of dribble) {
       const ballCam = computeBallCamAim(carPos, ballPos, heading);
-      const placed = placeBoomCamera(carPos, ballCam.aim, settings, 1, 16 / 9, BALL_CAM_AIR_VIEW_PITCH_SHARE);
-      const fullOrbit = placeBoomCamera(carPos, ballCam.aim, settings, 1, 16 / 9, 0);
+      const placed = placeBoomCamera(carPos, ballCam.aim, settings, 1, 16 / 9, BALL_CAM_SHARE);
 
-      expect(placed.position.y).toBeGreaterThan(carPos.y - 30);
-      expect(placed.position.y).toBeGreaterThan(fullOrbit.position.y + 40);
-      // The car stays near its usual spot, clear of the bottom of the frame
+      expect(placed.position.y).toBeCloseTo(carPos.y + settings.height, 3);
+      // The car stays clear of the bottom of the frame
       const carNdc = projectWith(placed, carPos);
       const ballNdc = projectWith(placed, ballPos);
       expect(carNdc.y).toBeGreaterThan(-0.6);
@@ -348,7 +347,7 @@ describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
     const heading = new THREE.Vector3(0, 0, 1);
     for (const ballPos of [new THREE.Vector3(1740, 1357, -3300), new THREE.Vector3(1800, 1400, -3300), new THREE.Vector3(1700, 1900, -3000)]) {
       const ballCam = computeBallCamAim(carPos, ballPos, heading);
-      const placed = placeBoomCamera(carPos, ballCam.aim, DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, BALL_CAM_AIR_VIEW_PITCH_SHARE);
+      const placed = placeBoomCamera(carPos, ballCam.aim, DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, BALL_CAM_SHARE);
       const fullOrbit = placeBoomCamera(carPos, ballCam.aim, DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, 0);
       expect(placed.position.y).toBeGreaterThan(fullOrbit.position.y);
       expect(Math.abs(projectWith(placed, carPos).y)).toBeLessThanOrEqual(CAR_FRAMING_LIMIT_NDC + 1e-6);
@@ -360,31 +359,42 @@ describe('3. Ball Cam Aim, Elevation Limits & Framing', () => {
     const carPos = new THREE.Vector3(0, 900, 0);
     const lowBall = new THREE.Vector3(1200, 92.75, 0);
     const ballCam = computeBallCamAim(carPos, lowBall, new THREE.Vector3(1, 0, 0));
-    const placed = placeBoomCamera(carPos, ballCam.aim, { ...DEFAULT_CAMERA_SETTINGS, angle: -5 }, 1, 16 / 9, BALL_CAM_AIR_VIEW_PITCH_SHARE);
+    const placed = placeBoomCamera(carPos, ballCam.aim, { ...DEFAULT_CAMERA_SETTINGS, angle: -5 }, 1, 16 / 9, BALL_CAM_SHARE);
 
     expect(placed.position.y).toBeGreaterThan(carPos.y);
     expect(projectWith(placed, carPos).y).toBeLessThan(0);
   });
 
-  it('keeps the car near its usual spot for a high ball and lets the ball ride up the frame', () => {
+  it('keeps the camera at its usual height for a high ball and lets the ball ride up the frame', () => {
     const heading = new THREE.Vector3(0, 0, -1);
-    const cases = [
-      [new THREE.Vector3(0, 17, 0), BALL_CAM_VIEW_PITCH_SHARE],
-      [new THREE.Vector3(0, 600, 0), BALL_CAM_AIR_VIEW_PITCH_SHARE],
-    ] as const;
-    for (const [carPos, share] of cases) {
-      const usual = placeBoomCamera(carPos, lookRotation(heading, WORLD_UP), DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, share);
-      const usualCarY = projectWith(usual, carPos).y;
+    for (const carPos of [new THREE.Vector3(0, 17, 0), new THREE.Vector3(0, 600, 0)]) {
+      const usual = placeBoomCamera(carPos, lookRotation(heading, WORLD_UP), DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, BALL_CAM_SHARE);
 
       const ballPos = new THREE.Vector3(0, carPos.y + 1500, -800);
       const ballCam = computeBallCamAim(carPos, ballPos, heading);
-      const placed = placeBoomCamera(carPos, ballCam.aim, DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, share);
-      const tanHalfV = Math.tan((V_FOV_16_9 * Math.PI) / 360);
-      const dropDeg = THREE.MathUtils.radToDeg(
-        Math.atan(usualCarY * tanHalfV) - Math.atan(projectWith(placed, carPos).y * tanHalfV)
-      );
-      expect(dropDeg).toBeLessThanOrEqual(CAR_MAX_DROP_DEG + 1e-3);
+      const placed = placeBoomCamera(carPos, ballCam.aim, DEFAULT_CAMERA_SETTINGS, 1, 16 / 9, BALL_CAM_SHARE);
+      expect(placed.position.distanceTo(usual.position)).toBeLessThan(1e-3);
+      expect(projectWith(placed, carPos).y).toBeGreaterThanOrEqual(-CAR_FRAMING_LIMIT_NDC - 1e-6);
       expect(projectWith(placed, ballPos).y).toBeGreaterThan(0.2);
+    }
+  });
+
+  it('only tilts the view a little for a ball on the roof or just above the car', () => {
+    // Positions from the sample replay: a roof dribble on the turf and a flip reset setup
+    const settings = { ...DEFAULT_CAMERA_SETTINGS, height: 90, angle: -4 };
+    const cases: Array<[THREE.Vector3, THREE.Vector3, THREE.Vector3]> = [
+      [new THREE.Vector3(2750, 17, -1710), new THREE.Vector3(2728, 150, -1779), new THREE.Vector3(-0.41, 0, -0.91)],
+      [new THREE.Vector3(-2566, 569, 2166), new THREE.Vector3(-2558, 763, 2171), new THREE.Vector3(0.41, 0, 0.91)],
+    ];
+    for (const [carPos, ballPos, heading] of cases) {
+      const ballCam = computeBallCamAim(carPos, ballPos, heading.normalize(), settings);
+      const placed = placeBoomCamera(carPos, ballCam.aim, settings, 1, 16 / 9, BALL_CAM_SHARE);
+
+      // The camera stays up behind the car instead of dropping to the turf or under the car
+      expect(placed.position.y).toBeCloseTo(carPos.y + settings.height, 3);
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(placed.quaternion);
+      expect(THREE.MathUtils.radToDeg(Math.asin(forward.y))).toBeLessThan(20);
+      expect(projectWith(placed, ballPos).y).toBeGreaterThan(projectWith(placed, carPos).y);
     }
   });
 

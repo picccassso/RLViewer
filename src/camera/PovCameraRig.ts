@@ -1,7 +1,5 @@
 import * as THREE from 'three';
 import {
-  BALL_CAM_AIR_VIEW_PITCH_SHARE,
-  BALL_CAM_VIEW_PITCH_SHARE,
   CameraSettings,
   computeBallCamAim,
   computeCarCamAim,
@@ -107,7 +105,10 @@ export class PovCameraRig {
     this.carHeading.copy(heading);
 
     const carAim = computeCarCamAim(carPos, carQuat, heading);
-    const ballCam = computeBallCamAim(carPos, ballPos, heading);
+    const ballCam = computeBallCamAim(carPos, ballPos, heading, {
+      distance: settings.distance * this.distanceMultiplier,
+      height: settings.height,
+    });
     const targetAim = slerpAim(carAim.clone(), ballCam.aim, ballCamWeight);
 
     // Car Cam follows the car nearly rigidly. Ball Cam is looser, and slower still
@@ -128,18 +129,8 @@ export class PovCameraRig {
       this.distanceMultiplier += (speedStretch - this.distanceMultiplier) * (1 - Math.exp(-3 * deltaTime));
     }
 
-    // Part of a high ball's aim tilts the view instead of swinging the boom under the car,
+    // Ball Cam's upward aim tilts the view rather than swinging the boom under the car,
     // so the camera keeps its height behind the car on the turf and in the air.
-    const groundedWeight = 1 - Math.min(Math.max((carPos.y - 60) / 200, 0), 1);
-    const viewPitchShare = BALL_CAM_AIR_VIEW_PITCH_SHARE
-      + (BALL_CAM_VIEW_PITCH_SHARE - BALL_CAM_AIR_VIEW_PITCH_SHARE) * groundedWeight;
-    return placeBoomCamera(
-      carPos,
-      this.aim,
-      settings,
-      this.distanceMultiplier,
-      aspect,
-      viewPitchShare * ballCamWeight
-    );
+    return placeBoomCamera(carPos, this.aim, settings, this.distanceMultiplier, aspect, ballCamWeight);
   }
 }
