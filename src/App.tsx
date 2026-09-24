@@ -11,6 +11,17 @@ import { TacticalMinimap } from './components/TacticalMinimap';
 import { CameraToolbar } from './components/CameraToolbar';
 import { PlaybackTimeline } from './components/PlaybackTimeline';
 import { DropZoneOverlay } from './components/DropZoneOverlay';
+import type { AudioStatus } from './audio/ReplayAudio';
+
+function loadAudioSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('rl-viewer-audio') ?? 'null');
+    if (saved && Number.isFinite(saved.volume) && typeof saved.muted === 'boolean') {
+      return { volume: Math.max(0, Math.min(1, saved.volume)), muted: saved.muted as boolean };
+    }
+  } catch { /* Storage may be disabled. */ }
+  return { volume: 0.65, muted: false };
+}
 
 export const App: React.FC = () => {
   // Replay Data & Loading
@@ -24,6 +35,8 @@ export const App: React.FC = () => {
   const [frameState, setFrameState] = useState<FrameState | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
+  const [audioSettings, setAudioSettings] = useState(loadAudioSettings);
+  const [audioStatus, setAudioStatus] = useState<AudioStatus>('locked');
   const [seekTarget, setSeekTarget] = useState<{ time: number; id: number } | null>(null);
 
   // Camera & Followed Player State
@@ -36,11 +49,18 @@ export const App: React.FC = () => {
   const [isHudVisible, setIsHudVisible] = useState<boolean>(true);
 
   useEffect(() => {
+    try { localStorage.setItem('rl-viewer-audio', JSON.stringify(audioSettings)); } catch { /* Optional preference. */ }
+  }, [audioSettings]);
+
+  useEffect(() => {
     const handleHudShortcut = (event: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((event.target as HTMLElement)?.tagName)) return;
       if (event.code === 'KeyH') {
         event.preventDefault();
         setIsHudVisible((visible) => !visible);
+      } else if (event.code === 'KeyM' && !event.repeat) {
+        event.preventDefault();
+        setAudioSettings((settings) => ({ ...settings, muted: !settings.muted }));
       }
     };
     window.addEventListener('keydown', handleHudShortcut);
@@ -193,6 +213,9 @@ export const App: React.FC = () => {
         cameraSettings={cameraSettings}
         seekTarget={seekTarget}
         showHud={isHudVisible}
+        volume={audioSettings.volume}
+        muted={audioSettings.muted}
+        onAudioStatus={setAudioStatus}
         onTimeUpdate={handleTimeUpdate}
         onSelectPlayer={handleSelectPlayer}
         onTogglePlay={handleTogglePlay}
@@ -273,6 +296,15 @@ export const App: React.FC = () => {
               totalFrames={replayData?.totalFrames || 0}
               isPlaying={isPlaying}
               playbackSpeed={playbackSpeed}
+              volume={audioSettings.volume}
+              muted={audioSettings.muted}
+              audioStatus={audioStatus}
+              onToggleMute={() => setAudioSettings((settings) => ({
+                ...settings,
+                volume: settings.volume || 0.65,
+                muted: audioStatus === 'locked' || settings.volume === 0 ? false : !settings.muted,
+              }))}
+              onChangeVolume={(volume) => setAudioSettings({ volume, muted: false })}
               tickMarks={replayData?.tickMarks || []}
               onTogglePlay={handleTogglePlay}
               onSeekTime={handleSeekTime}

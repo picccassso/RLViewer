@@ -12,6 +12,7 @@ import { TrailManager } from './TrailManager';
 import { ImpactEffects } from './ImpactEffects';
 import { CameraSuite, CameraMode } from '../camera/CameraSuite';
 import { CameraSettings } from '../math/cameraMath';
+import { AudioStatus, ReplayAudio } from '../audio/ReplayAudio';
 
 /**
  * Playback draws at most ~60 fps: replays are recorded at ~30 Hz and interpolated, so faster
@@ -35,6 +36,9 @@ interface ReplayVisualizerCanvasProps {
   cameraSettings: CameraSettings;
   seekTarget?: { time: number; id: number } | null;
   showHud: boolean;
+  volume: number;
+  muted: boolean;
+  onAudioStatus: (status: AudioStatus) => void;
   onTimeUpdate: (time: number, frameIndex: number, state: FrameState) => void;
   onSelectPlayer: (index: number) => void;
   onTogglePlay: () => void;
@@ -52,6 +56,9 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
   cameraSettings,
   seekTarget,
   showHud,
+  volume,
+  muted,
+  onAudioStatus,
   onTimeUpdate,
   onSelectPlayer,
   onTogglePlay,
@@ -76,6 +83,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     cars: CarManager;
     trails: TrailManager;
     impacts: ImpactEffects;
+    audio: ReplayAudio;
     cameraSuite: CameraSuite;
     lastTime: number;
     clockTime: number;
@@ -126,6 +134,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     const cars = new CarManager(scene);
     const trails = new TrailManager(scene);
     const impacts = new ImpactEffects(scene);
+    const audio = new ReplayAudio(onAudioStatus);
 
     managersRef.current = {
       renderer,
@@ -138,6 +147,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       cars,
       trails,
       impacts,
+      audio,
       cameraSuite,
       lastTime: performance.now(),
       clockTime: 0,
@@ -166,6 +176,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       cars.dispose();
       trails.dispose();
       impacts.dispose();
+      audio.dispose();
       postProcessing.dispose();
       labelRenderer.domElement.remove();
       renderer.dispose();
@@ -180,9 +191,9 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     const { boostPads, cars, trails, impacts } = managersRef.current;
     boostPads.initPads(replayData.boostPads);
     cars.initCars(replayData.players);
-    cars.setFlipResets(replayData.flipResets);
     trails.setReplay(replayData);
     impacts.setReplay(replayData);
+    managersRef.current.audio.setReplay(replayData);
 
     // Reset clock
     managersRef.current.clockTime = 0;
@@ -205,6 +216,15 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
     wakeRef.current();
   }, [showHud]);
 
+  useEffect(() => {
+    managersRef.current?.audio.setMix(volume, muted);
+  }, [volume, muted]);
+
+  useEffect(() => {
+    const managers = managersRef.current;
+    if (managers) managers.audio.seek(managers.clockTime);
+  }, [isPlaying, playbackSpeed]);
+
   // Apply explicit user seek actions (timeline scrubbing, clicking event marks, frame stepping).
   // Each seek applies once: this effect also re-runs on pause, camera and player changes,
   // which must not rewind the clock to the last seek.
@@ -214,6 +234,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
 
     const diff = Math.abs(managersRef.current.clockTime - seekTarget.time);
     managersRef.current.clockTime = seekTarget.time;
+    managersRef.current.audio.seek(seekTarget.time);
     if (diff > 0.4) {
       managersRef.current.cameraSuite.snap();
     }
@@ -228,7 +249,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       ball.update(frameState.ball.position, frameState.ball.rotation);
       cars.updateCars(frameState, activePov);
       trails.update(frameState);
-      impacts.update(frameState.time);
+      impacts.update(frameState);
       boostPads.updateStates(frameState.boostPadsAvailable, 0.016);
       cameraSuite.update(frameState, 0.016);
       stadium.setSightline(cameraSuite.camera.position, cameraSuite.followTarget);
@@ -262,6 +283,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
         managersRef.current.clockTime += delta * playbackSpeed;
         if (managersRef.current.clockTime > replayData.duration) {
           managersRef.current.clockTime = 0; // loop match
+          managersRef.current.audio.seek(0);
         }
       }
 
@@ -276,12 +298,13 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
       ball.update(frameState.ball.position, frameState.ball.rotation);
       cars.updateCars(frameState, activePov);
       trails.update(frameState);
-      impacts.update(frameState.time);
+      impacts.update(frameState);
       boostPads.updateStates(frameState.boostPadsAvailable, delta);
 
       // Update Camera. Its smoothing runs on the replay clock, so at 2x the camera moves
       // like the game's camera sped up rather than falling behind and chasing the car.
       cameraSuite.update(frameState, isPlaying ? delta * playbackSpeed : delta);
+      managersRef.current.audio.update(frameState.time, isPlaying, playbackSpeed, cameraSuite.camera);
       stadium.setSightline(cameraSuite.camera.position, cameraSuite.followTarget);
 
       // Render

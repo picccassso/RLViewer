@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { ParsedReplayData } from '../types/replay';
-import { buildImpacts, Impact, sampleImpacts } from '../math/impacts';
+import { FrameState, ParsedReplayData } from '../types/replay';
+import { buildImpacts, EmitImpactSprite, Impact, sampleImpacts } from '../math/impacts';
+import { sampleFlipResetFlashes } from '../math/flipReset';
 
 /** Most sprites on screen at once: a couple of overlapping hits and a demo. */
 const MAX_SPRITES = 512;
@@ -61,9 +62,16 @@ const fragmentShader = /* glsl */ `
     float shape;
     if (vShape < 0.5) {
       shape = (1.0 - r * r) * (1.0 - r * r);
-    } else {
+    } else if (vShape < 1.5) {
       float band = (r - 0.84) / 0.09;
       shape = exp(-band * band);
+    } else {
+      // A narrow, bright filament with pointed ends, rather than a stretched fuzzy blob.
+      float taper = max(0.0, 1.0 - vUv.x * vUv.x);
+      float width = abs(vUv.y) / max(0.15, taper);
+      float core = exp(-width * width * 32.0);
+      float halo = exp(-width * width * 5.0) * 0.22;
+      shape = (core + halo) * taper;
     }
     gl_FragColor = vec4(vColor, vAlpha * shape);
     #include <tonemapping_fragment>
@@ -72,9 +80,8 @@ const fragmentShader = /* glsl */ `
 `;
 
 /**
- * Contact effects: a flash, a shockwave ring and sparks where the ball is hit hard, and a
- * fireball where a car is demolished. Drawn from the replay's touches and demolitions at
- * the current time, like the trails.
+ * Ball contact sparks, compact hit/reset flashes, and demolition fireballs.
+ * All particles are sampled from replay time, like the trails.
  */
 export class ImpactEffects {
   private readonly mesh: THREE.Mesh<THREE.InstancedBufferGeometry, THREE.ShaderMaterial>;
@@ -85,6 +92,7 @@ export class ImpactEffects {
   private readonly alphas = new Float32Array(MAX_SPRITES);
   private readonly shapes = new Float32Array(MAX_SPRITES);
   private impacts: Impact[] = [];
+  private flipResets: number[][] = [];
 
   constructor(scene: THREE.Scene) {
     const geometry = new THREE.InstancedBufferGeometry();
@@ -114,11 +122,12 @@ export class ImpactEffects {
 
   public setReplay(replayData: ParsedReplayData) {
     this.impacts = buildImpacts(replayData);
+    this.flipResets = replayData.flipResets;
   }
 
-  public update(time: number) {
+  public update(state: FrameState) {
     let count = 0;
-    sampleImpacts(this.impacts, time, (x, y, z, sx, sy, sz, size, r, g, b, alpha, shape) => {
+    const emit: EmitImpactSprite = (x, y, z, sx, sy, sz, size, r, g, b, alpha, shape) => {
       if (count >= MAX_SPRITES || alpha <= 0) return;
       const i3 = count * 3;
       this.centres[i3] = x; this.centres[i3 + 1] = y; this.centres[i3 + 2] = z;
@@ -128,7 +137,9 @@ export class ImpactEffects {
       this.alphas[count] = alpha;
       this.shapes[count] = shape;
       count++;
-    });
+    };
+    sampleFlipResetFlashes(this.flipResets, state, emit);
+    sampleImpacts(this.impacts, state.time, emit);
 
     const geometry = this.mesh.geometry;
     geometry.instanceCount = count;
@@ -147,6 +158,7 @@ export class ImpactEffects {
     this.mesh.geometry.dispose();
     this.mesh.material.dispose();
     this.impacts = [];
+    this.flipResets = [];
   }
 }
 

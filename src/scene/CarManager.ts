@@ -4,7 +4,6 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { PlayerInfo, FrameState } from '../types/replay';
 import { carModelFor } from './carBodies';
-import { flipResetBadgeAt } from '../math/flipReset';
 import { SUPERSONIC_SPEED_THRESHOLD } from '../math/cameraMath';
 
 // Octane Hitbox: 118.01 length (X), 36.16 height (Y), 84.20 width (Z)
@@ -40,24 +39,6 @@ function createNameplate(info: PlayerInfo): { nameplate: THREE.Object3D; boostFi
   const nameplate = new CSS2DObject(element);
   nameplate.center.set(0.5, 1); // anchored at its bottom centre
   return { nameplate, boostFill };
-}
-
-/**
- * "FLIP RESET" badge shown for a moment after a player gets one, stacked above the nameplate.
- * Its padding keeps it clear of the nameplate, which shares the same anchor point.
- */
-function createFlipResetBadge(info: PlayerInfo): THREE.Object3D {
-  if (typeof document === 'undefined') return new THREE.Object3D();
-  const element = document.createElement('div');
-  element.className = 'flip-reset-anchor';
-  const badge = document.createElement('div');
-  badge.className = info.team === 0 ? 'flip-reset flip-reset-blue' : 'flip-reset flip-reset-orange';
-  badge.textContent = 'Flip reset';
-  element.appendChild(badge);
-  const object = new CSS2DObject(element);
-  object.center.set(0.5, 1);
-  object.visible = false;
-  return object;
 }
 
 const TEAM_PAINT = [new THREE.Color(0x1d6bff), new THREE.Color(0xff5a00)];
@@ -102,7 +83,6 @@ interface CarEntity {
   nameplateBoostFill: HTMLElement | null;
   /** Boost last written to the nameplate bar, so the page is only touched when it changes. */
   nameplateBoost: number;
-  flipResetBadge: THREE.Object3D;
   boostFlame: THREE.Group;
   hitboxWireframe: THREE.LineSegments;
   isModelLoaded: boolean;
@@ -120,7 +100,6 @@ export class CarManager {
   private wheelModelPromise: Promise<THREE.Group> | null = null;
   private isDisposed: boolean = false;
   private nameplatesVisible: boolean = true;
-  private flipResets: number[][] = [];
   private groundShadows: THREE.InstancedMesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null = null;
   private shadowTransform = new THREE.Object3D();
 
@@ -237,8 +216,6 @@ export class CarManager {
       const { nameplate, boostFill } = createNameplate(player);
       nameplate.visible = this.nameplatesVisible;
       this.carsGroup.add(nameplate);
-      const flipResetBadge = createFlipResetBadge(player);
-      this.carsGroup.add(flipResetBadge);
 
       const entity: CarEntity = {
         info: player,
@@ -247,7 +224,6 @@ export class CarManager {
         nameplate,
         nameplateBoostFill: boostFill,
         nameplateBoost: -1,
-        flipResetBadge,
         boostFlame,
         hitboxWireframe,
         isModelLoaded: false,
@@ -396,14 +372,12 @@ export class CarManager {
       // Hide nameplate for the followed POV player so it doesn't obstruct camera view
       const isPovTarget = activePovPlayerIndex !== null && playerState.info.index === activePovPlayerIndex;
       entity.nameplate.visible = entity.group.visible && this.nameplatesVisible && !isPovTarget;
-      this.updateFlipResetBadge(entity, frameState.time, isPovTarget);
       if (!entity.group.visible) continue;
       if (entity.nameplate.visible) this.updateNameplateBoost(entity, boost);
 
       // Position and Rotation
       entity.group.position.set(position.x, position.y, position.z);
       entity.nameplate.position.set(position.x, position.y + NAMEPLATE_HEIGHT, position.z);
-      entity.flipResetBadge.position.copy(entity.nameplate.position);
       entity.group.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
 
       if (this.groundShadows && position.y < 500) {
@@ -438,26 +412,6 @@ export class CarManager {
     entity.nameplateBoostFill.style.transform = `scaleX(${amount / 100})`;
   }
 
-  /** Playback times of each player's flip resets, indexed like the players passed to initCars. */
-  public setFlipResets(flipResets: number[][]) {
-    this.flipResets = flipResets;
-  }
-
-  private updateFlipResetBadge(entity: CarEntity, time: number, isPovTarget: boolean) {
-    const appearance = entity.group.visible && this.nameplatesVisible
-      ? flipResetBadgeAt(this.flipResets[entity.info.index] ?? [], time)
-      : null;
-    entity.flipResetBadge.visible = appearance !== null;
-    if (!appearance || !(entity.flipResetBadge instanceof CSS2DObject)) return;
-
-    const element = entity.flipResetBadge.element;
-    // The followed POV player has no nameplate, so the badge takes its place.
-    element.classList.toggle('flip-reset-anchor-solo', isPovTarget);
-    const badge = element.firstElementChild as HTMLElement;
-    badge.style.opacity = appearance.opacity.toFixed(3);
-    badge.style.transform = `scale(${appearance.scale.toFixed(3)})`;
-  }
-
   public getCarObject(playerIndex: number): THREE.Object3D | null {
     return this.carEntities.get(playerIndex)?.group ?? null;
   }
@@ -472,7 +426,6 @@ export class CarManager {
     this.nameplatesVisible = visible;
     this.carEntities.forEach((car) => {
       car.nameplate.visible = visible;
-      if (!visible) car.flipResetBadge.visible = false;
     });
   }
 
@@ -488,7 +441,6 @@ export class CarManager {
     this.carEntities.forEach((c) => {
       this.carsGroup.remove(c.group);
       this.carsGroup.remove(c.nameplate); // also takes its element out of the page
-      this.carsGroup.remove(c.flipResetBadge);
     });
     this.carEntities.clear();
   }

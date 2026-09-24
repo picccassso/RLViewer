@@ -6,8 +6,11 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { ReplayTickMark } from '../types/replay';
+import type { AudioStatus } from '../audio/ReplayAudio';
 
 /** How far the skip buttons jump, like the skip in Rocket League's replay viewer. */
 const SKIP_SECONDS = 5;
@@ -19,6 +22,11 @@ interface PlaybackTimelineProps {
   totalFrames: number;
   isPlaying: boolean;
   playbackSpeed: number;
+  volume: number;
+  muted: boolean;
+  audioStatus: AudioStatus;
+  onToggleMute: () => void;
+  onChangeVolume: (volume: number) => void;
   tickMarks: ReplayTickMark[];
   onTogglePlay: () => void;
   onSeekTime: (time: number) => void;
@@ -34,6 +42,11 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
   totalFrames,
   isPlaying,
   playbackSpeed,
+  volume,
+  muted,
+  audioStatus,
+  onToggleMute,
+  onChangeVolume,
   tickMarks,
   onTogglePlay,
   onSeekTime,
@@ -76,6 +89,9 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
     [tickMarks, duration]
   );
   const speeds = [0.25, 0.5, 1.0, 1.5, 2.0];
+  const audioLabel = audioStatus === 'unavailable' ? 'Audio unavailable in this browser'
+    : audioStatus === 'locked' ? 'Enable sound'
+    : muted || volume === 0 ? 'Unmute (M)' : 'Mute (M)';
 
   return (
     <div className="w-full bg-slate-950/95 border-t border-white/10 px-3 pt-7 pb-2 flex flex-col gap-1.5 select-none">
@@ -211,21 +227,33 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
           </span>
         </div>
 
-        {/* Right: Playback Speed Switcher */}
-        <div className="flex items-center gap-0.5 border border-white/10 rounded p-0.5">
-          {speeds.map((s) => (
-            <button
-              key={s}
-              onClick={() => onChangeSpeed(s)}
-              className={`px-1.5 py-0.5 rounded-sm text-[9px] font-mono transition-colors ${
-                playbackSpeed === s
-                  ? 'bg-white/10 text-white'
-                  : 'text-slate-600 hover:text-white'
-              }`}
-            >
-              {s}x
-            </button>
-          ))}
+        {/* Right: Sound and playback speed */}
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onToggleMute} className="ui-button p-1.5 flex items-center gap-1"
+            title={audioLabel} aria-label={audioLabel} aria-pressed={muted}
+            disabled={audioStatus === 'unavailable'}>
+            {muted || volume === 0 || audioStatus !== 'ready' ? <VolumeX size={15} /> : <Volume2 size={15} />}
+            {audioStatus === 'locked' && <span className="text-[10px]">Enable sound</span>}
+          </button>
+          <input type="range" min="0" max="100" step="1" value={Math.round(volume * 100)}
+            onChange={(event) => onChangeVolume(Number(event.target.value) / 100)}
+            aria-label="Sound volume" title={`Volume ${Math.round(volume * 100)}%`}
+            disabled={audioStatus === 'unavailable'} className="hidden md:block w-16 accent-slate-300" />
+          <div className="flex items-center gap-0.5 border border-white/10 rounded p-0.5">
+            {speeds.map((s) => (
+              <button
+                key={s}
+                onClick={() => onChangeSpeed(s)}
+                className={`px-1.5 py-0.5 rounded-sm text-[9px] font-mono transition-colors ${
+                  playbackSpeed === s
+                    ? 'bg-white/10 text-white'
+                    : 'text-slate-600 hover:text-white'
+                }`}
+              >
+                {s}x
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>

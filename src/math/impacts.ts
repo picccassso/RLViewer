@@ -1,13 +1,13 @@
-import { ParsedReplayData } from '../types/replay';
+import { FrameState, ParsedReplayData } from '../types/replay';
 import { getFrameSampleAtTime, unpackFrame } from './frameUnpacker';
+import { lastTouchAt } from './trails';
 
 const BALL_RADIUS = 92.75; // uu
 
 /** A car further than this from the ball can't have made the touch. */
 const MAX_TOUCH_DISTANCE = 320; // uu
 /**
- * Change in the ball's velocity (uu/s) below which a touch gets no effect, so dribbles
- * and soft pushes stay quiet; at `FULL_HIT_SPEED_CHANGE` the effect is at full size.
+ * Soft touches still spark; velocity changes above this start adding impact strength.
  */
 const MIN_HIT_SPEED_CHANGE = 350;
 const FULL_HIT_SPEED_CHANGE = 4500;
@@ -17,6 +17,8 @@ const FLIP_HIT_BONUS = 0.15;
 /** How long a ball hit and a demolition stay on screen. */
 export const HIT_SECONDS = 0.45;
 export const DEMO_SECONDS = 0.9;
+const CONTACT_SPARK_RATE = 140;
+const SPARK_SECONDS = 0.3;
 
 const GRAVITY = -650; // uu/s²
 const TEAM_RGB: ReadonlyArray<readonly [number, number, number]> = [
@@ -25,7 +27,7 @@ const TEAM_RGB: ReadonlyArray<readonly [number, number, number]> = [
 ];
 
 export interface Impact {
-  kind: 'hit' | 'demo';
+  kind: 'hit' | 'demo' | 'spark';
   time: number;
   /** Contact point, in Three.js space. */
   x: number; y: number; z: number;
@@ -34,10 +36,12 @@ export interface Impact {
   /** 0..1, how hard the hit was. */
   strength: number;
   team: 0 | 1;
+  /** Motion inherited at birth, keeping sparks with a moving air dribble. */
+  velocity?: { x: number; y: number; z: number };
 }
 
 /**
- * Where and how hard every notable ball hit and demolition happened. A hit's contact point
+ * Ball hits, sustained contact spark births, and demolitions on the replay clock. A hit's contact point
  * is on the ball towards the nearest car of the touching team, or opposite the ball's
  * change of velocity if no such car is close. Sorted by time.
  */
@@ -56,14 +60,13 @@ export function buildImpacts(data: ParsedReplayData): Impact[] {
     const dvz = after.z - before.z;
     const speedChange = Math.hypot(dvx, dvy, dvz);
     let strength = (speedChange - MIN_HIT_SPEED_CHANGE) / (FULL_HIT_SPEED_CHANGE - MIN_HIT_SPEED_CHANGE);
-    if (strength <= 0) continue;
-    strength = Math.min(strength + (touch.flip ? FLIP_HIT_BONUS : 0), 1);
+    strength = Math.min(Math.max(strength, 0) + (touch.flip ? FLIP_HIT_BONUS : 0), 1);
 
     const state = stateAt(touch.time);
     const ball = state.ball.position;
-    let nx = -dvx / speedChange;
-    let ny = -dvy / speedChange;
-    let nz = -dvz / speedChange;
+    let nx = speedChange > 1e-3 ? -dvx / speedChange : 0;
+    let ny = speedChange > 1e-3 ? -dvy / speedChange : -1;
+    let nz = speedChange > 1e-3 ? -dvz / speedChange : 0;
     let nearest = MAX_TOUCH_DISTANCE;
     for (const player of state.players) {
       if (player.info.team !== touch.team || !player.isPresent || player.isDemoed) continue;
@@ -87,6 +90,7 @@ export function buildImpacts(data: ParsedReplayData): Impact[] {
       nx, ny, nz,
       strength,
       team: touch.team,
+      velocity: state.ball.velocity,
     });
   }
 
@@ -100,12 +104,85 @@ export function buildImpacts(data: ParsedReplayData): Impact[] {
       team: demo.team,
     });
   }
+  buildContactSparks(data, impacts);
   return impacts.sort((a, b) => a.time - b.time);
+}
+
+/** A sustained carry can have very few recorded touch events. Proximity and relative
+ * velocity bridge those events, but only for the last touching team and airborne cars. */
+function carryContact(data: ParsedReplayData, state: FrameState) {
+  const touch = lastTouchAt(data.ballTouches, state.time);
+  if (!touch || state.ball.position.y < 160) return null;
+  let nearest = 205;
+  let contact = null;
+  for (let i = 0; i < state.players.length; i++) {
+    const car = state.players[i];
+    if (!car.isPresent || car.isDemoed || car.info.team !== touch.team || car.position.y < 55) continue;
+    const dx = car.position.x - state.ball.position.x;
+    const dy = car.position.y - state.ball.position.y;
+    const dz = car.position.z - state.ball.position.z;
+    const distance = Math.hypot(dx, dy, dz);
+    if (distance < 1 || distance >= nearest) continue;
+    // Only very close contact can sustain an effect long after the last discrete touch.
+    if (state.time - touch.time > 0.8 && distance > 170) continue;
+    const relativeSpeed = Math.hypot(
+      car.velocity.x - state.ball.velocity.x,
+      car.velocity.y - state.ball.velocity.y,
+      car.velocity.z - state.ball.velocity.z
+    );
+    if (relativeSpeed > 900) continue;
+    nearest = distance;
+    contact = { player: i, team: touch.team, nx: dx / distance, ny: dy / distance, nz: dz / distance };
+  }
+  return contact;
+}
+
+/** Fixed replay-time births, interpolated between real packets, independent of render FPS. */
+function buildContactSparks(data: ParsedReplayData, impacts: Impact[]) {
+  if (data.totalFrames < 2 || !data.ballTouches.length) return;
+  let previous = unpackFrame(data, 0);
+  let from = carryContact(data, previous);
+  for (let f = 1; f < data.totalFrames; f++) {
+    const current = unpackFrame(data, f);
+    const to = carryContact(data, current);
+    const span = current.time - previous.time;
+    const a = previous.ball.position;
+    const b = current.ball.position;
+    if (from && to && from.player === to.player && span > 0 && span <= 0.25 &&
+        Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) <= 7000 * span) {
+      for (let k = Math.floor(previous.time * CONTACT_SPARK_RATE) + 1;
+        k <= Math.floor(current.time * CONTACT_SPARK_RATE); k++) {
+        const time = k / CONTACT_SPARK_RATE;
+        const t = (time - previous.time) / span;
+        const lerp = (a: number, b: number) => a + (b - a) * t;
+        let nx = lerp(from.nx, to.nx);
+        let ny = lerp(from.ny, to.ny);
+        let nz = lerp(from.nz, to.nz);
+        const length = Math.hypot(nx, ny, nz);
+        if (length < 0.5) continue;
+        nx /= length; ny /= length; nz /= length;
+        impacts.push({
+          kind: 'spark', time, team: to.team, strength: 0.12,
+          x: lerp(a.x, b.x) + nx * (BALL_RADIUS + 2),
+          y: lerp(a.y, b.y) + ny * (BALL_RADIUS + 2),
+          z: lerp(a.z, b.z) + nz * (BALL_RADIUS + 2),
+          nx, ny, nz,
+          velocity: {
+            x: lerp(previous.ball.velocity.x, current.ball.velocity.x),
+            y: lerp(previous.ball.velocity.y, current.ball.velocity.y),
+            z: lerp(previous.ball.velocity.z, current.ball.velocity.z),
+          },
+        });
+      }
+    }
+    previous = current;
+    from = to;
+  }
 }
 
 /**
  * Receives one glowing sprite: its centre, a world-space streak to stretch it along (zero
- * for a round sprite), its half size, HDR colour, opacity, and shape (0 soft blob, 1 ring).
+ * for a round sprite), its half size, HDR colour, opacity, and shape (0 blob, 1 ring, 2 spark).
  */
 export type EmitImpactSprite = (
   x: number, y: number, z: number,
@@ -113,7 +190,7 @@ export type EmitImpactSprite = (
   size: number,
   r: number, g: number, b: number,
   alpha: number,
-  shape: 0 | 1
+  shape: 0 | 1 | 2
 ) => void;
 
 /** Stable pseudo-random 0..1 for spark `i` of impact `seed`. */
@@ -142,7 +219,9 @@ export function sampleImpacts(impacts: Impact[], time: number, emit: EmitImpactS
   for (let i = low; i < impacts.length && impacts[i].time <= time; i++) {
     const impact = impacts[i];
     const age = time - impact.time;
-    if (impact.kind === 'hit') {
+    if (impact.kind === 'spark') {
+      if (age < SPARK_SECONDS) sampleSpark(impact, age, 0, emit);
+    } else if (impact.kind === 'hit') {
       if (age < HIT_SECONDS) sampleHit(impact, age, emit);
     } else {
       sampleDemo(impact, age, emit);
@@ -152,63 +231,49 @@ export function sampleImpacts(impacts: Impact[], time: number, emit: EmitImpactS
 
 function sampleHit(hit: Impact, age: number, emit: EmitImpactSprite) {
   const s = hit.strength;
-  const [tr, tg, tb] = TEAM_RGB[hit.team];
-  const seed = Math.round(hit.time * 1000);
 
   // A white-hot flash at the contact point.
   const flashLife = 0.08 + 0.06 * s;
-  if (age < flashLife) {
+  if (s > 0.08 && age < flashLife) {
     const t = age / flashLife;
-    const glow = 2.5 + 2.5 * s;
-    emit(hit.x, hit.y, hit.z, 0, 0, 0, (35 + 55 * s) * (1 + 0.5 * t), glow, glow * 0.96, glow * 0.9, (1 - t) * (1 - t), 0);
+    const glow = 2 + 1.5 * s;
+    emit(hit.x, hit.y, hit.z, 0, 0, 0, (12 + 28 * s) * (1 + 0.5 * t), glow, glow * 0.96, glow * 0.9, (1 - t) * (1 - t), 0);
   }
+  const sparks = Math.round(6 + 20 * s);
+  for (let i = 0; i < sparks; i++) sampleSpark(hit, age, i, emit);
+}
 
-  // A thin shockwave ring, tinted by the touching team.
-  const ringLife = 0.22 + 0.1 * s;
-  if (age < ringLife) {
-    const t = age / ringLife;
-    const glow = 1.6;
-    emit(
-      hit.x, hit.y, hit.z, 0, 0, 0,
-      (30 + 130 * s) * easeOut(t) + 10,
-      glow * (0.5 + 0.5 * tr), glow * (0.5 + 0.5 * tg), glow * (0.5 + 0.5 * tb),
-      Math.pow(1 - t, 1.5) * (0.35 + 0.45 * s),
-      1
-    );
-  }
-
-  // Sparks thrown out across the contact, streaking as they fly and dropping under gravity.
-  const sparks = Math.round(5 + 13 * s);
-  for (let i = 0; i < sparks; i++) {
-    const life = 0.2 + 0.2 * random(seed, i, 0);
-    if (age >= life) continue;
-    // A random direction, flattened towards the plane of the contact.
-    let dx = random(seed, i, 1) * 2 - 1;
-    let dy = random(seed, i, 2) * 2 - 1;
-    let dz = random(seed, i, 3) * 2 - 1;
-    const along = dx * hit.nx + dy * hit.ny + dz * hit.nz;
-    dx -= 0.7 * along * hit.nx;
-    dy -= 0.7 * along * hit.ny;
-    dz -= 0.7 * along * hit.nz;
-    const length = Math.hypot(dx, dy, dz) || 1;
-    const speed = (450 + 800 * s) * (0.5 + random(seed, i, 4));
-    const vx = (dx / length) * speed;
-    const vy = (dy / length) * speed + 150;
-    const vz = (dz / length) * speed;
-    const vyNow = vy + GRAVITY * age;
-    const t = age / life;
-    const heat = 1 - t;
-    emit(
-      hit.x + vx * age,
-      hit.y + vy * age + 0.5 * GRAVITY * age * age,
-      hit.z + vz * age,
-      vx * 0.025, vyNow * 0.025, vz * 0.025,
-      2.5 + 2 * s,
-      3 * (tr + (1 - tr) * heat), 3 * (tg + (1 - tg) * heat * 0.9), 3 * (tb + (1 - tb) * heat * 0.7),
-      1 - t * t,
-      0
-    );
-  }
+function sampleSpark(hit: Impact, age: number, i: number, emit: EmitImpactSprite) {
+  const s = hit.strength;
+  const seed = Math.round(hit.time * 10000);
+  const life = 0.14 + (SPARK_SECONDS - 0.14) * random(seed, i, 0);
+  if (age >= life) return;
+  // A random direction, flattened towards the plane of the contact.
+  let dx = random(seed, i, 1) * 2 - 1;
+  let dy = random(seed, i, 2) * 2 - 1;
+  let dz = random(seed, i, 3) * 2 - 1;
+  const along = dx * hit.nx + dy * hit.ny + dz * hit.nz;
+  dx += (0.2 - along) * hit.nx;
+  dy += (0.2 - along) * hit.ny;
+  dz += (0.2 - along) * hit.nz;
+  const length = Math.hypot(dx, dy, dz) || 1;
+  const speed = (280 + 750 * s) * (0.5 + random(seed, i, 4));
+  const vx = (dx / length) * speed;
+  const vy = (dy / length) * speed;
+  const vz = (dz / length) * speed;
+  const vyNow = vy + GRAVITY * age;
+  const t = age / life;
+  const heat = 1 - t;
+  emit(
+    hit.x + (vx + (hit.velocity?.x ?? 0) * 0.75) * age,
+    hit.y + (vy + (hit.velocity?.y ?? 0) * 0.75) * age + 0.5 * GRAVITY * age * age,
+    hit.z + (vz + (hit.velocity?.z ?? 0) * 0.75) * age,
+    vx * 0.045, vyNow * 0.045, vz * 0.045,
+    (1.3 + 1.2 * s) * (0.6 + 0.4 * heat),
+    3.5, 1.5 + 1.9 * heat, 0.35 + 2.7 * heat * heat,
+    1 - t * t,
+    2
+  );
 }
 
 function sampleDemo(demo: Impact, age: number, emit: EmitImpactSprite) {

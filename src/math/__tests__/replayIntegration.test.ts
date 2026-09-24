@@ -13,7 +13,7 @@ import {
 import { unpackFrame } from '../frameUnpacker';
 import { FIELD_WIDTH, FIELD_LENGTH, FIELD_CEILING } from '../../scene/StadiumManager';
 import { buildTickMarks, readFinalScore, GOAL_EVENT_MATCH_WINDOW } from '../../parser/tickMarks';
-import { buildFlipResets, flipResetBadgeAt, FLIP_RESET_BADGE_SECONDS } from '../flipReset';
+import { buildFlipResets, flipResetFlashAt, FLIP_RESET_FLASH_SECONDS } from '../flipReset';
 
 function playerLookup(rawData: any, player: any) {
   const id = JSON.stringify(player);
@@ -178,18 +178,21 @@ describe('Real Replay End-to-End Integration Verification', () => {
   });
 });
 
-describe('Flip reset badge', () => {
-  it('pops in at the reset, holds, then fades out', () => {
-    const resets = [10, 30];
-    expect(flipResetBadgeAt(resets, 9.9)).toBeNull();
-    const start = flipResetBadgeAt(resets, 10)!;
-    expect(start.opacity).toBe(0);
-    expect(start.scale).toBeGreaterThan(1);
-    expect(flipResetBadgeAt(resets, 11)).toEqual({ opacity: 1, scale: 1 });
-    expect(flipResetBadgeAt(resets, 10 + FLIP_RESET_BADGE_SECONDS - 0.25)!.opacity).toBeCloseTo(0.5, 5);
-    expect(flipResetBadgeAt(resets, 10 + FLIP_RESET_BADGE_SECONDS)).toBeNull();
-    // A later reset restarts the badge
-    expect(flipResetBadgeAt(resets, 31)).toEqual({ opacity: 1, scale: 1 });
+describe('Flip reset flash', () => {
+  it('flashes immediately, fades quickly and restarts on another reset', () => {
+    const resets = [10, 10.15, 30];
+    expect(flipResetFlashAt([], 10)).toBeNull();
+    expect(flipResetFlashAt(resets, 9.9)).toBeNull();
+    const start = flipResetFlashAt(resets, 10)!;
+    expect(start.opacity).toBe(1);
+    const halfway = flipResetFlashAt(resets, 10 + FLIP_RESET_FLASH_SECONDS / 2)!;
+    expect(halfway.opacity).toBeCloseTo(0.25, 5);
+    expect(halfway.scale).toBeGreaterThan(start.scale);
+    expect(flipResetFlashAt(resets, 10.15)).toEqual(start);
+    expect(flipResetFlashAt(resets, 10.15 + FLIP_RESET_FLASH_SECONDS + 0.001)).toBeNull();
+    expect(flipResetFlashAt(resets, 30)).toEqual(start);
+    // Scrubbing back to a reset reproduces exactly the same flash.
+    expect(flipResetFlashAt(resets, 10)).toEqual(start);
   });
 
   it('ignores refreshes from players not on the roster', () => {
