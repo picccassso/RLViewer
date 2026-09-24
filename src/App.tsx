@@ -15,8 +15,8 @@ import { DropZoneOverlay } from './components/DropZoneOverlay';
 export const App: React.FC = () => {
   // Replay Data & Loading
   const [replayData, setReplayData] = useState<ParsedReplayData | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [loadingMessage, setLoadingMessage] = useState<string>('Loading preloaded sample match...');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
 
   // Playback State
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -47,33 +47,6 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleHudShortcut);
   }, []);
 
-  // 1. Initial Load: Auto-preload sample replay file
-  useEffect(() => {
-    let active = true;
-    async function init() {
-      try {
-        setIsLoading(true);
-        setLoadingMessage('Initializing client-side WebAssembly parser...');
-        const data = await loadSampleReplay();
-        if (!active) return;
-        setReplayData(data);
-        if (data.players[0]) {
-          setCameraSettings(data.players[0].camera_settings);
-        }
-        setIsLoading(false);
-      } catch (err: any) {
-        if (!active) return;
-        console.error('Failed to preload sample replay:', err);
-        setLoadingMessage('Click "Load .replay" to open a Rocket League replay file.');
-        setIsLoading(false);
-      }
-    }
-    init();
-    return () => {
-      active = false;
-    };
-  }, []);
-
   // Handle uploaded replay file
   const handleFileLoaded = async (buffer: ArrayBuffer, fileName: string) => {
     try {
@@ -100,11 +73,11 @@ export const App: React.FC = () => {
     }
   };
 
-  // Reload preloaded sample replay
+  // Load the bundled sample replay
   const handleLoadSample = async () => {
     try {
       setIsLoading(true);
-      setLoadingMessage('Reloading sample match...');
+      setLoadingMessage('Loading sample match...');
       setIsPlaying(false);
       const data = await loadSampleReplay();
       setReplayData(data);
@@ -232,11 +205,12 @@ export const App: React.FC = () => {
         loadingMessage={loadingMessage}
         onFileLoaded={handleFileLoaded}
         onLoadSample={handleLoadSample}
-        showControls={isHudVisible}
+        showControls={isHudVisible && replayData !== null}
+        showStartPrompt={replayData === null && !isLoading}
         onHideHud={() => setIsHudVisible(false)}
       />
 
-      {isHudVisible && (
+      {isHudVisible && replayData && (
         <>
           {/* 3. Compact score */}
           <div className="absolute top-3 inset-x-0 flex justify-center z-20 pointer-events-none">

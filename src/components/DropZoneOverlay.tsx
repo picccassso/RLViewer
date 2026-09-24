@@ -7,6 +7,8 @@ interface DropZoneOverlayProps {
   onFileLoaded: (buffer: ArrayBuffer, fileName: string) => void;
   onLoadSample: () => void;
   showControls: boolean;
+  /** Nothing is open yet: ask for a replay. */
+  showStartPrompt: boolean;
   onHideHud: () => void;
 }
 
@@ -16,6 +18,7 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
   onFileLoaded,
   onLoadSample,
   showControls,
+  showStartPrompt,
   onHideHud,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -77,6 +80,8 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
+      // Clear the selection so choosing the same file again still loads it.
+      e.target.value = '';
       const buffer = await file.arrayBuffer();
       onFileLoaded(buffer, file.name);
     }
@@ -114,6 +119,38 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
         </div>
       )}
 
+      {/* Start screen: nothing is open yet */}
+      {showStartPrompt && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center p-4 text-white">
+          <div className="ui-panel w-full max-w-sm p-5 text-center">
+            <UploadCloud size={28} className="mx-auto mb-3 text-slate-300" />
+            <h2 className="text-base font-semibold tracking-wide">Open a replay</h2>
+            <p className="mt-1 text-xs text-slate-400">
+              Choose a .replay file or drop one anywhere. It's parsed locally and never uploaded.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="ui-button ui-button-active flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold"
+              >
+                <FileCode size={14} />
+                <span>Choose replay</span>
+              </button>
+              <button
+                onClick={onLoadSample}
+                className="ui-button flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium"
+              >
+                <Play size={13} />
+                <span>Watch sample match</span>
+              </button>
+            </div>
+            <p className="mt-4 text-[11px] text-slate-500">
+              Rocket League saves replays in Documents\My Games\Rocket League\TAGame\Demos
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -138,7 +175,7 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
           <button
             onClick={onLoadSample}
             className="ui-button flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium"
-            title="Reload sample match"
+            title="Load sample match"
           >
             <Play size={12} />
             <span>Sample</span>
