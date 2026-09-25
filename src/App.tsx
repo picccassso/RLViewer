@@ -204,7 +204,7 @@ export const App: React.FC = () => {
   }, [replayData, currentTime]);
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#060913] select-none">
+    <div className="fixed inset-0 w-full h-full h-[100dvh] overflow-hidden bg-[#060913] select-none">
       {/* 0. Mobile Portrait Orientation Lock Overlay */}
       <OrientationLockOverlay isVisible={showRotatePrompt} />
 
@@ -247,7 +247,7 @@ export const App: React.FC = () => {
           {/* 3. Compact score */}
           <div
             className="absolute inset-x-0 flex justify-center z-20 pointer-events-none"
-            style={{ top: 'max(12px, env(safe-area-inset-top))' }}
+            style={{ top: 'max(10px, env(safe-area-inset-top))' }}
           >
             <div className="pointer-events-auto">
               <Scoreboard
@@ -262,8 +262,8 @@ export const App: React.FC = () => {
           <div
             className="absolute z-20 ui-panel px-2.5 py-1.5 pointer-events-none flex items-center"
             style={{
-              top: 'max(12px, env(safe-area-inset-top))',
-              left: 'max(12px, env(safe-area-inset-left))',
+              top: 'max(10px, env(safe-area-inset-top))',
+              left: 'max(10px, env(safe-area-inset-left))',
             }}
           >
             <RLViewerLogo size={20} showText={true} />
@@ -273,11 +273,11 @@ export const App: React.FC = () => {
           <div
             className="absolute z-20 pointer-events-none"
             style={{
-              left: 'max(12px, env(safe-area-inset-left))',
-              bottom: 'calc(max(8px, env(safe-area-inset-bottom)) + 74px)',
+              left: 'max(10px, env(safe-area-inset-left))',
+              bottom: 'calc(max(6px, env(safe-area-inset-bottom)) + 58px)',
             }}
           >
-            <div className="pointer-events-auto flex items-end gap-2">
+            <div className="pointer-events-auto flex items-end gap-1.5 sm:gap-2 scale-90 sm:scale-100 origin-bottom-left max-w-[48vw]">
               <TacticalMinimap
                 frameState={frameState}
                 activePlayerIndex={activePlayerIndex}
@@ -303,16 +303,18 @@ export const App: React.FC = () => {
           <div
             className="absolute z-20 pointer-events-none"
             style={{
-              right: 'max(12px, env(safe-area-inset-right))',
-              bottom: 'calc(max(8px, env(safe-area-inset-bottom)) + 74px)',
+              right: 'max(10px, env(safe-area-inset-right))',
+              bottom: 'calc(max(6px, env(safe-area-inset-bottom)) + 58px)',
             }}
           >
-            <PlayerTelemetry
-              frameState={frameState}
-              activePlayerIndex={activePlayerIndex}
-              isBallCam={isBallCam}
-              onToggleBallCam={handleToggleBallCam}
-            />
+            <div className="pointer-events-auto flex items-end justify-end max-w-[48vw]">
+              <PlayerTelemetry
+                frameState={frameState}
+                activePlayerIndex={activePlayerIndex}
+                isBallCam={isBallCam}
+                onToggleBallCam={handleToggleBallCam}
+              />
+            </div>
           </div>
 
           {/* 6. Playback */}

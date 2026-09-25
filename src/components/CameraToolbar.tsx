@@ -39,97 +39,98 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
   return (
     <div className="flex flex-col gap-1.5 pointer-events-auto">
       {/* 1. Camera Mode Toolbar */}
-      <div className="ui-panel p-1 flex items-center gap-0.5">
+      <div className="ui-panel p-0.5 sm:p-1 flex items-center gap-0.5 overflow-x-auto no-scrollbar max-w-full">
         {/* POV Cam */}
         <button
           onClick={() => onSetMode('pov')}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-medium transition-colors ${
+          className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded text-[9px] sm:text-[10px] font-medium transition-colors ${
             mode === 'pov'
               ? 'bg-white/10 text-white'
               : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
           }`}
           title="Player POV Chase Camera"
         >
-          <Camera size={14} />
+          <Camera size={13} />
           <span>POV</span>
         </button>
 
         {/* Director Cam */}
         <button
           onClick={() => onSetMode('director')}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-medium transition-colors ${
+          className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded text-[9px] sm:text-[10px] font-medium transition-colors ${
             mode === 'director'
               ? 'bg-white/10 text-white'
               : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
           }`}
           title="Dynamic Broadcast Spectator Camera"
         >
-          <Video size={14} />
+          <Video size={13} />
           <span>DIRECTOR</span>
         </button>
 
         {/* Free Orbit Cam */}
         <button
           onClick={() => onSetMode('free')}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-medium transition-colors ${
+          className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded text-[9px] sm:text-[10px] font-medium transition-colors ${
             mode === 'free'
               ? 'bg-white/10 text-white'
               : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
           }`}
           title="Free-Fly Orbit Controls"
         >
-          <Compass size={14} />
+          <Compass size={13} />
           <span>FREE</span>
         </button>
 
         {/* Tactical 2D Overhead */}
         <button
           onClick={() => onSetMode('tactical')}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-medium transition-colors ${
+          className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded text-[9px] sm:text-[10px] font-medium transition-colors ${
             mode === 'tactical'
               ? 'bg-white/10 text-white'
               : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
           }`}
           title="Top-Down Tactical View"
         >
-          <MapPin size={14} />
-          <span>OVERHEAD</span>
+          <MapPin size={13} />
+          <span className="hidden sm:inline">OVERHEAD</span>
+          <span className="sm:hidden">TOP</span>
         </button>
 
         {/* Divider */}
-        <div className="w-[1px] h-5 bg-white/10 mx-1" />
+        <div className="w-[1px] h-4 bg-white/10 mx-0.5" />
 
         {/* BallCam Toggle Button */}
         <button
           onClick={onToggleBallCam}
-          className={`p-1.5 rounded text-[10px] transition-colors ${
+          className={`p-1 sm:p-1.5 rounded text-[9px] sm:text-[10px] transition-colors ${
             isBallCam
               ? 'bg-cyan-400/10 text-cyan-300'
               : 'text-slate-500 hover:text-white'
           }`}
           title="Toggle Ball Cam [Space]"
         >
-          <Eye size={14} />
+          <Eye size={13} />
         </button>
 
         {/* Camera Settings Slider Toggle */}
         <button
           onClick={() => setShowSettingsModal(!showSettingsModal)}
-          className={`p-1.5 rounded text-xs transition-colors ${
+          className={`p-1 sm:p-1.5 rounded text-xs transition-colors ${
             showSettingsModal
               ? 'bg-white/20 text-white'
               : 'text-slate-400 hover:text-white hover:bg-white/5'
           }`}
           title="Camera Profile Settings"
         >
-          <Sliders size={14} />
+          <Sliders size={13} />
         </button>
       </div>
 
       {/* 2. Live 6-Player Switcher */}
       {players.length > 0 && (
-        <div className="ui-panel p-1 flex items-center gap-0.5 overflow-x-auto max-w-[90vw]">
-          <span className="text-[9px] text-slate-600 uppercase tracking-wider px-1.5">
+        <div className="ui-panel p-0.5 sm:p-1 flex items-center gap-0.5 overflow-x-auto no-scrollbar max-w-full">
+          <span className="text-[8px] sm:text-[9px] text-slate-600 uppercase tracking-wider px-1">
             Players
           </span>
 
@@ -141,7 +142,7 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
               <button
                 key={p.index}
                 onClick={() => onSelectPlayer(idx)}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[9px] sm:text-[10px] font-medium transition-colors shrink-0 ${
                   isSelected
                     ? isBlue
                       ? 'bg-blue-500/15 text-blue-200'
@@ -153,11 +154,11 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
                 title={`Switch to ${p.name} [Key ${idx + 1}]`}
               >
                 <span
-                  className={`w-1.5 h-1.5 rounded-full ${
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                     isBlue ? 'bg-blue-500' : 'bg-orange-500'
                   }`}
                 />
-                <span className="truncate max-w-[90px]">{p.name}</span>
+                <span className="truncate max-w-[60px] sm:max-w-[90px]">{p.name}</span>
               </button>
             );
           })}

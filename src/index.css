@@ -42,15 +42,32 @@
   animation: pulse-ring 2.8s ease-in-out infinite;
 }
 
-body {
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
   background-color: #060913;
   color: #ffffff;
   font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 @layer components {
