@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 export interface DeviceOrientationState {
   isPortrait: boolean;
   isTouchDevice: boolean;
+  isCompactMobile: boolean;
   showRotatePrompt: boolean;
   isFullscreen: boolean;
   toggleFullscreen: () => Promise<void>;
@@ -32,15 +33,22 @@ export function checkIsFullscreen(): boolean {
   return Boolean(document.fullscreenElement || (document as any).webkitFullscreenElement);
 }
 
+export function checkIsCompactMobile(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.innerHeight < 560 || (checkIsTouchDevice() && Math.min(window.innerWidth, window.innerHeight) < 600);
+}
+
 export function useDeviceOrientation(): DeviceOrientationState {
   const [isPortrait, setIsPortrait] = useState<boolean>(checkIsPortrait);
   const [isTouchDevice, setIsTouchDevice] = useState<boolean>(checkIsTouchDevice);
+  const [isCompactMobile, setIsCompactMobile] = useState<boolean>(checkIsCompactMobile);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(checkIsFullscreen);
 
   useEffect(() => {
     const handleUpdate = () => {
       setIsPortrait(checkIsPortrait());
       setIsTouchDevice(checkIsTouchDevice());
+      setIsCompactMobile(checkIsCompactMobile());
       setIsFullscreen(checkIsFullscreen());
     };
 
@@ -87,6 +95,7 @@ export function useDeviceOrientation(): DeviceOrientationState {
   return {
     isPortrait,
     isTouchDevice,
+    isCompactMobile,
     showRotatePrompt,
     isFullscreen,
     toggleFullscreen,

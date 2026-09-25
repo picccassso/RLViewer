@@ -29,6 +29,7 @@ interface PlaybackTimelineProps {
   audioStatus: AudioStatus;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  compact?: boolean;
   onToggleMute: () => void;
   onChangeVolume: (volume: number) => void;
   tickMarks: ReplayTickMark[];
@@ -51,6 +52,7 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
   audioStatus,
   isFullscreen,
   onToggleFullscreen,
+  compact = false,
   onToggleMute,
   onChangeVolume,
   tickMarks,
@@ -127,11 +129,13 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
 
   return (
     <div
-      className="w-full bg-slate-950/95 border-t border-white/10 px-2.5 sm:px-3 pt-5 sm:pt-7 pb-1 sm:pb-2 flex flex-col gap-1 sm:gap-1.5 select-none"
+      className={`w-full bg-slate-950/95 border-t border-white/10 select-none flex flex-col ${
+        compact ? 'px-2.5 pt-5 pb-1 gap-1' : 'px-3 pt-7 pb-2 gap-1.5'
+      }`}
       style={{
-        paddingBottom: 'max(6px, env(safe-area-inset-bottom))',
-        paddingLeft: 'max(10px, env(safe-area-inset-left))',
-        paddingRight: 'max(10px, env(safe-area-inset-right))',
+        paddingBottom: compact ? 'max(6px, env(safe-area-inset-bottom))' : 'max(8px, env(safe-area-inset-bottom))',
+        paddingLeft: compact ? 'max(10px, env(safe-area-inset-left))' : 'max(12px, env(safe-area-inset-left))',
+        paddingRight: compact ? 'max(10px, env(safe-area-inset-right))' : 'max(12px, env(safe-area-inset-right))',
       }}
     >
       {/* 1. Scrubber Track & Discrete Event Tick Markers */}
@@ -203,78 +207,88 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
       </div>
 
       {/* 2. Playback Controls Bar */}
-      <div className="flex items-center justify-between text-[11px] sm:text-xs text-slate-300">
+      <div className={`flex items-center justify-between text-slate-300 ${compact ? 'text-[11px]' : 'text-xs'}`}>
         {/* Left: Step Controls & Play/Pause */}
-        <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2">
+        <div className={`flex items-center ${compact ? 'gap-1' : 'gap-1.5 md:gap-2'}`}>
           {/* Step Back 1s */}
           <button
             onClick={() => onSeekTime(Math.max(0, currentTime - SKIP_SECONDS))}
-            className="ui-button flex items-center gap-0.5 px-1 sm:px-1.5 py-1 sm:py-1.5 text-[9px] sm:text-[10px] font-medium tabular-nums"
+            className={`ui-button flex items-center gap-0.5 ${
+              compact ? 'px-1 py-1 text-[9px]' : 'px-1.5 py-1.5 text-[10px]'
+            } font-medium tabular-nums`}
             title={`Back ${SKIP_SECONDS} seconds`}
             aria-label={`Back ${SKIP_SECONDS} seconds`}
           >
-            <ArrowLeft size={13} />
+            <ArrowLeft size={compact ? 13 : 14} />
             <span>{SKIP_SECONDS}s</span>
           </button>
 
           {/* Step Back 1 Frame */}
           <button
             onClick={() => onStepFrame(-1)}
-            className="ui-button p-1 sm:p-1.5"
+            className={`ui-button ${compact ? 'p-1' : 'p-1.5'}`}
             title="Step Back 1 Frame"
           >
-            <ChevronLeft size={14} />
+            <ChevronLeft size={compact ? 14 : 16} />
           </button>
 
           {/* Play / Pause Primary Button */}
           <button
             onClick={onTogglePlay}
-            className="ui-button ui-button-active px-2.5 sm:px-3 py-1 sm:py-1.5 text-white font-medium flex items-center gap-1 sm:gap-1.5"
+            className={`ui-button ui-button-active ${
+              compact ? 'px-2.5 py-1 text-[9px]' : 'px-3 py-1.5 text-[10px]'
+            } text-white font-medium flex items-center gap-1.5`}
           >
-            {isPlaying ? <Pause size={13} /> : <Play size={13} />}
-            <span className="text-[9px] sm:text-[10px] uppercase tracking-wide">{isPlaying ? 'Pause' : 'Play'}</span>
+            {isPlaying ? <Pause size={compact ? 13 : 14} /> : <Play size={compact ? 13 : 14} />}
+            <span className="uppercase tracking-wide">{isPlaying ? 'Pause' : 'Play'}</span>
           </button>
 
           {/* Step Forward 1 Frame */}
           <button
             onClick={() => onStepFrame(1)}
-            className="ui-button p-1 sm:p-1.5"
+            className={`ui-button ${compact ? 'p-1' : 'p-1.5'}`}
             title="Step Forward 1 Frame"
           >
-            <ChevronRight size={14} />
+            <ChevronRight size={compact ? 14 : 16} />
           </button>
 
           {/* Step Forward 1s */}
           <button
             onClick={() => onSeekTime(Math.min(duration, currentTime + SKIP_SECONDS))}
-            className="ui-button flex items-center gap-0.5 px-1 sm:px-1.5 py-1 sm:py-1.5 text-[9px] sm:text-[10px] font-medium tabular-nums"
+            className={`ui-button flex items-center gap-0.5 ${
+              compact ? 'px-1 py-1 text-[9px]' : 'px-1.5 py-1.5 text-[10px]'
+            } font-medium tabular-nums`}
             title={`Forward ${SKIP_SECONDS} seconds`}
             aria-label={`Forward ${SKIP_SECONDS} seconds`}
           >
             <span>{SKIP_SECONDS}s</span>
-            <ArrowRight size={13} />
+            <ArrowRight size={compact ? 13 : 14} />
           </button>
         </div>
 
         {/* Center: Match Time & Frame Display */}
-        <div className="flex items-center gap-1.5 sm:gap-2 font-mono">
-          <span className="text-white font-medium text-[10px] sm:text-[11px] tabular-nums">
+        <div className={`flex items-center font-mono ${compact ? 'gap-1.5 text-[10px]' : 'gap-2 text-[11px]'}`}>
+          <span className="text-white font-medium tabular-nums">
             {formatTime(currentTime)}
           </span>
           <span className="text-slate-500">/</span>
-          <span className="text-slate-500 text-[10px] sm:text-[11px] tabular-nums">{formatTime(duration)}</span>
+          <span className="text-slate-500 tabular-nums">{formatTime(duration)}</span>
           <span className="hidden sm:inline-block text-[9px] text-slate-600 ml-2 border-l border-white/10 pl-2">
             Frame {currentFrame} / {totalFrames}
           </span>
         </div>
 
         {/* Right: Sound and playback speed */}
-        <div className="flex items-center gap-1 sm:gap-2">
-          <button type="button" onClick={onToggleMute} className="ui-button p-1 sm:p-1.5 flex items-center gap-1"
+        <div className={`flex items-center ${compact ? 'gap-1' : 'gap-2'}`}>
+          <button type="button" onClick={onToggleMute} className={`ui-button ${compact ? 'p-1' : 'p-1.5'} flex items-center gap-1`}
             title={audioLabel} aria-label={audioLabel} aria-pressed={muted}
             disabled={audioStatus === 'unavailable'}>
-            {muted || volume === 0 || audioStatus !== 'ready' ? <VolumeX size={14} /> : <Volume2 size={14} />}
-            {audioStatus === 'locked' && <span className="text-[9px] sm:text-[10px]">Enable sound</span>}
+            {muted || volume === 0 || audioStatus !== 'ready' ? (
+              <VolumeX size={compact ? 14 : 15} />
+            ) : (
+              <Volume2 size={compact ? 14 : 15} />
+            )}
+            {audioStatus === 'locked' && <span className={compact ? 'text-[9px]' : 'text-[10px]'}>Enable sound</span>}
           </button>
           <input type="range" min="0" max="100" step="1" value={Math.round(volume * 100)}
             onChange={(event) => onChangeVolume(Number(event.target.value) / 100)}
@@ -285,7 +299,9 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
               <button
                 key={s}
                 onClick={() => onChangeSpeed(s)}
-                className={`px-1 sm:px-1.5 py-0.5 rounded-sm text-[8px] sm:text-[9px] font-mono transition-colors ${
+                className={`${
+                  compact ? 'px-1 py-0.5 text-[8px]' : 'px-1.5 py-0.5 text-[9px]'
+                } rounded-sm font-mono transition-colors ${
                   playbackSpeed === s
                     ? 'bg-white/10 text-white'
                     : 'text-slate-600 hover:text-white'
@@ -301,11 +317,15 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
             <button
               type="button"
               onClick={onToggleFullscreen}
-              className="ui-button p-1 sm:p-1.5 flex items-center justify-center text-slate-300 hover:text-white"
+              className={`ui-button ${compact ? 'p-1' : 'p-1.5'} flex items-center justify-center text-slate-300 hover:text-white`}
               title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
               aria-label={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
             >
-              {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+              {isFullscreen ? (
+                <Minimize size={compact ? 14 : 15} />
+              ) : (
+                <Maximize size={compact ? 14 : 15} />
+              )}
             </button>
           )}
         </div>

@@ -50,7 +50,7 @@ export const App: React.FC = () => {
   const [ballCamOverride, setBallCamOverride] = useState<boolean | null>(null);
   const [cameraSettings, setCameraSettings] = useState<CameraSettings>(DEFAULT_CAMERA_SETTINGS);
   const [isHudVisible, setIsHudVisible] = useState<boolean>(true);
-  const { showRotatePrompt, isFullscreen, toggleFullscreen } = useDeviceOrientation();
+  const { showRotatePrompt, isCompactMobile, isFullscreen, toggleFullscreen } = useDeviceOrientation();
 
   useEffect(() => {
     try { localStorage.setItem('rl-viewer-audio', JSON.stringify(audioSettings)); } catch { /* Optional preference. */ }
@@ -247,7 +247,7 @@ export const App: React.FC = () => {
           {/* 3. Compact score */}
           <div
             className="absolute inset-x-0 flex justify-center z-20 pointer-events-none"
-            style={{ top: 'max(10px, env(safe-area-inset-top))' }}
+            style={{ top: isCompactMobile ? 'max(10px, env(safe-area-inset-top))' : '12px' }}
           >
             <div className="pointer-events-auto">
               <Scoreboard
@@ -255,6 +255,7 @@ export const App: React.FC = () => {
                 teamScores={liveTeamScores}
                 blueTeamName="BLUE"
                 orangeTeamName="ORANGE"
+                compact={isCompactMobile}
               />
             </div>
           </div>
@@ -262,8 +263,8 @@ export const App: React.FC = () => {
           <div
             className="absolute z-20 ui-panel px-2.5 py-1.5 pointer-events-none flex items-center"
             style={{
-              top: 'max(10px, env(safe-area-inset-top))',
-              left: 'max(10px, env(safe-area-inset-left))',
+              top: isCompactMobile ? 'max(10px, env(safe-area-inset-top))' : '12px',
+              left: isCompactMobile ? 'max(10px, env(safe-area-inset-left))' : '12px',
             }}
           >
             <RLViewerLogo size={20} showText={true} />
@@ -273,15 +274,22 @@ export const App: React.FC = () => {
           <div
             className="absolute z-20 pointer-events-none"
             style={{
-              left: 'max(10px, env(safe-area-inset-left))',
-              bottom: 'calc(max(6px, env(safe-area-inset-bottom)) + 58px)',
+              left: isCompactMobile ? 'max(10px, env(safe-area-inset-left))' : '12px',
+              bottom: isCompactMobile
+                ? 'calc(max(6px, env(safe-area-inset-bottom)) + 58px)'
+                : '88px',
             }}
           >
-            <div className="pointer-events-auto flex items-end gap-1.5 sm:gap-2 scale-90 sm:scale-100 origin-bottom-left max-w-[48vw]">
+            <div
+              className={`pointer-events-auto flex items-end gap-1.5 sm:gap-2 origin-bottom-left ${
+                isCompactMobile ? 'scale-90 max-w-[48vw]' : ''
+              }`}
+            >
               <TacticalMinimap
                 frameState={frameState}
                 activePlayerIndex={activePlayerIndex}
                 onSelectPlayer={handleSelectPlayer}
+                defaultCollapsed={isCompactMobile}
               />
               <CameraToolbar
                 mode={cameraMode}
@@ -295,6 +303,7 @@ export const App: React.FC = () => {
                 onUpdateCameraSettings={(patch) =>
                   setCameraSettings((prev) => ({ ...prev, ...patch }))
                 }
+                compact={isCompactMobile}
               />
             </div>
           </div>
@@ -303,16 +312,23 @@ export const App: React.FC = () => {
           <div
             className="absolute z-20 pointer-events-none"
             style={{
-              right: 'max(10px, env(safe-area-inset-right))',
-              bottom: 'calc(max(6px, env(safe-area-inset-bottom)) + 58px)',
+              right: isCompactMobile ? 'max(10px, env(safe-area-inset-right))' : '12px',
+              bottom: isCompactMobile
+                ? 'calc(max(6px, env(safe-area-inset-bottom)) + 58px)'
+                : '88px',
             }}
           >
-            <div className="pointer-events-auto flex items-end justify-end max-w-[48vw]">
+            <div
+              className={`pointer-events-auto flex items-end justify-end ${
+                isCompactMobile ? 'max-w-[48vw]' : ''
+              }`}
+            >
               <PlayerTelemetry
                 frameState={frameState}
                 activePlayerIndex={activePlayerIndex}
                 isBallCam={isBallCam}
                 onToggleBallCam={handleToggleBallCam}
+                compact={isCompactMobile}
               />
             </div>
           </div>
@@ -331,6 +347,7 @@ export const App: React.FC = () => {
               audioStatus={audioStatus}
               isFullscreen={isFullscreen}
               onToggleFullscreen={toggleFullscreen}
+              compact={isCompactMobile}
               onToggleMute={() => setAudioSettings((settings) => ({
                 ...settings,
                 volume: settings.volume || 0.65,

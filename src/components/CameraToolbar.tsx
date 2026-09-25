@@ -21,6 +21,7 @@ interface CameraToolbarProps {
   onSelectPlayer: (index: number) => void;
   onToggleBallCam: () => void;
   onUpdateCameraSettings: (settings: Partial<CameraSettings>) => void;
+  compact?: boolean;
 }
 
 export const CameraToolbar: React.FC<CameraToolbarProps> = ({
@@ -33,104 +34,126 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
   onSelectPlayer,
   onToggleBallCam,
   onUpdateCameraSettings,
+  compact = false,
 }) => {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   return (
     <div className="flex flex-col gap-1.5 pointer-events-auto">
       {/* 1. Camera Mode Toolbar */}
-      <div className="ui-panel p-0.5 sm:p-1 flex items-center gap-0.5 overflow-x-auto no-scrollbar max-w-full">
+      <div
+        className={`ui-panel flex items-center ${
+          compact
+            ? 'p-0.5 gap-0.5 overflow-x-auto no-scrollbar max-w-full'
+            : 'p-1 gap-0.5'
+        }`}
+      >
         {/* POV Cam */}
         <button
           onClick={() => onSetMode('pov')}
-          className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded text-[9px] sm:text-[10px] font-medium transition-colors ${
+          className={`flex items-center gap-1.5 ${
+            compact ? 'px-1.5 py-1 text-[9px]' : 'px-2.5 py-1.5 text-[10px]'
+          } rounded font-medium transition-colors ${
             mode === 'pov'
               ? 'bg-white/10 text-white'
               : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
           }`}
           title="Player POV Chase Camera"
         >
-          <Camera size={13} />
+          <Camera size={compact ? 13 : 14} />
           <span>POV</span>
         </button>
 
         {/* Director Cam */}
         <button
           onClick={() => onSetMode('director')}
-          className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded text-[9px] sm:text-[10px] font-medium transition-colors ${
+          className={`flex items-center gap-1.5 ${
+            compact ? 'px-1.5 py-1 text-[9px]' : 'px-2.5 py-1.5 text-[10px]'
+          } rounded font-medium transition-colors ${
             mode === 'director'
               ? 'bg-white/10 text-white'
               : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
           }`}
           title="Dynamic Broadcast Spectator Camera"
         >
-          <Video size={13} />
+          <Video size={compact ? 13 : 14} />
           <span>DIRECTOR</span>
         </button>
 
         {/* Free Orbit Cam */}
         <button
           onClick={() => onSetMode('free')}
-          className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded text-[9px] sm:text-[10px] font-medium transition-colors ${
+          className={`flex items-center gap-1.5 ${
+            compact ? 'px-1.5 py-1 text-[9px]' : 'px-2.5 py-1.5 text-[10px]'
+          } rounded font-medium transition-colors ${
             mode === 'free'
               ? 'bg-white/10 text-white'
               : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
           }`}
           title="Free-Fly Orbit Controls"
         >
-          <Compass size={13} />
+          <Compass size={compact ? 13 : 14} />
           <span>FREE</span>
         </button>
 
         {/* Tactical 2D Overhead */}
         <button
           onClick={() => onSetMode('tactical')}
-          className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded text-[9px] sm:text-[10px] font-medium transition-colors ${
+          className={`flex items-center gap-1.5 ${
+            compact ? 'px-1.5 py-1 text-[9px]' : 'px-2.5 py-1.5 text-[10px]'
+          } rounded font-medium transition-colors ${
             mode === 'tactical'
               ? 'bg-white/10 text-white'
               : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
           }`}
           title="Top-Down Tactical View"
         >
-          <MapPin size={13} />
-          <span className="hidden sm:inline">OVERHEAD</span>
-          <span className="sm:hidden">TOP</span>
+          <MapPin size={compact ? 13 : 14} />
+          <span>{compact ? 'TOP' : 'OVERHEAD'}</span>
         </button>
 
         {/* Divider */}
-        <div className="w-[1px] h-4 bg-white/10 mx-0.5" />
+        <div className={`w-[1px] bg-white/10 ${compact ? 'h-4 mx-0.5' : 'h-5 mx-1'}`} />
 
         {/* BallCam Toggle Button */}
         <button
           onClick={onToggleBallCam}
-          className={`p-1 sm:p-1.5 rounded text-[9px] sm:text-[10px] transition-colors ${
+          className={`rounded ${
+            compact ? 'p-1 text-[9px]' : 'p-1.5 text-[10px]'
+          } transition-colors ${
             isBallCam
               ? 'bg-cyan-400/10 text-cyan-300'
               : 'text-slate-500 hover:text-white'
           }`}
           title="Toggle Ball Cam [Space]"
         >
-          <Eye size={13} />
+          <Eye size={compact ? 13 : 14} />
         </button>
 
         {/* Camera Settings Slider Toggle */}
         <button
           onClick={() => setShowSettingsModal(!showSettingsModal)}
-          className={`p-1 sm:p-1.5 rounded text-xs transition-colors ${
+          className={`rounded transition-colors ${
+            compact ? 'p-1 text-xs' : 'p-1.5 text-xs'
+          } ${
             showSettingsModal
               ? 'bg-white/20 text-white'
               : 'text-slate-400 hover:text-white hover:bg-white/5'
           }`}
           title="Camera Profile Settings"
         >
-          <Sliders size={13} />
+          <Sliders size={compact ? 13 : 14} />
         </button>
       </div>
 
       {/* 2. Live 6-Player Switcher */}
       {players.length > 0 && (
-        <div className="ui-panel p-0.5 sm:p-1 flex items-center gap-0.5 overflow-x-auto no-scrollbar max-w-full">
-          <span className="text-[8px] sm:text-[9px] text-slate-600 uppercase tracking-wider px-1">
+        <div
+          className={`ui-panel flex items-center gap-0.5 overflow-x-auto ${
+            compact ? 'p-0.5 no-scrollbar max-w-full' : 'p-1 max-w-[90vw]'
+          }`}
+        >
+          <span className={`text-slate-600 uppercase tracking-wider ${compact ? 'text-[8px] px-1' : 'text-[9px] px-1.5'}`}>
             Players
           </span>
 
@@ -142,7 +165,9 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
               <button
                 key={p.index}
                 onClick={() => onSelectPlayer(idx)}
-                className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[9px] sm:text-[10px] font-medium transition-colors shrink-0 ${
+                className={`flex items-center gap-1.5 rounded font-medium transition-colors shrink-0 ${
+                  compact ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-1 text-[10px]'
+                } ${
                   isSelected
                     ? isBlue
                       ? 'bg-blue-500/15 text-blue-200'
@@ -158,7 +183,7 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
                     isBlue ? 'bg-blue-500' : 'bg-orange-500'
                   }`}
                 />
-                <span className="truncate max-w-[60px] sm:max-w-[90px]">{p.name}</span>
+                <span className={`truncate ${compact ? 'max-w-[60px]' : 'max-w-[90px]'}`}>{p.name}</span>
               </button>
             );
           })}

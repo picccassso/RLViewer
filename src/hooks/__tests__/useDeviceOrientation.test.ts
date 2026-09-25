@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { checkIsTouchDevice, checkIsPortrait, checkIsFullscreen } from '../useDeviceOrientation';
+import { checkIsTouchDevice, checkIsPortrait, checkIsFullscreen, checkIsCompactMobile } from '../useDeviceOrientation';
 
 describe('device orientation and touch checks', () => {
   let mockWindow: any;
@@ -30,6 +30,7 @@ describe('device orientation and touch checks', () => {
   it('correctly identifies desktop landscape environment', () => {
     expect(checkIsPortrait()).toBe(false);
     expect(checkIsTouchDevice()).toBe(false);
+    expect(checkIsCompactMobile()).toBe(false);
   });
 
   it('identifies portrait orientation when height exceeds width', () => {
@@ -46,6 +47,16 @@ describe('device orientation and touch checks', () => {
     expect(checkIsTouchDevice()).toBe(true);
   });
 
+  it('identifies compact mobile on short touch screen landscape', () => {
+    mockWindow.innerWidth = 800;
+    mockWindow.innerHeight = 340;
+    mockWindow.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('pointer: coarse'),
+      media: query,
+    }));
+    expect(checkIsCompactMobile()).toBe(true);
+  });
+
   it('does not flag fine-pointer desktop as touch device even on narrow window', () => {
     mockWindow.innerWidth = 400;
     mockWindow.innerHeight = 900;
@@ -54,6 +65,7 @@ describe('device orientation and touch checks', () => {
       media: query,
     }));
     expect(checkIsTouchDevice()).toBe(false);
+    expect(checkIsCompactMobile()).toBe(false);
   });
 
   it('detects fullscreen element state', () => {

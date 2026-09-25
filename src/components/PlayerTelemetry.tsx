@@ -8,6 +8,7 @@ interface PlayerTelemetryProps {
   activePlayerIndex: number;
   isBallCam: boolean;
   onToggleBallCam: () => void;
+  compact?: boolean;
 }
 
 export const PlayerTelemetry: React.FC<PlayerTelemetryProps> = ({
@@ -15,6 +16,7 @@ export const PlayerTelemetry: React.FC<PlayerTelemetryProps> = ({
   activePlayerIndex,
   isBallCam,
   onToggleBallCam,
+  compact = false,
 }) => {
   const player = frameState?.players[activePlayerIndex];
   const boost = player?.boost ?? 0;
@@ -30,12 +32,16 @@ export const PlayerTelemetry: React.FC<PlayerTelemetryProps> = ({
   const isBlue = player?.info.team === 0;
 
   return (
-    <div className="flex items-end gap-1.5 sm:gap-3 scale-[0.72] sm:scale-100 origin-bottom-right">
+    <div
+      className={`flex items-end ${
+        compact ? 'gap-1.5 scale-[0.72] origin-bottom-right' : 'gap-3'
+      }`}
+    >
       <div className="ui-panel flex items-center select-none pointer-events-auto overflow-hidden">
         <div className={`w-0.5 self-stretch ${isBlue ? 'bg-blue-500' : 'bg-orange-500'}`} />
 
-        <div className="px-2 sm:px-3 py-1.5 sm:py-2 min-w-[90px] sm:min-w-[128px] border-r border-white/10">
-          <div className="text-xs font-semibold text-white truncate max-w-[85px] sm:max-w-[120px]">
+        <div className={`${compact ? 'px-2 py-1.5 min-w-[90px]' : 'px-3 py-2 min-w-[128px]'} border-r border-white/10`}>
+          <div className={`text-xs font-semibold text-white truncate ${compact ? 'max-w-[85px]' : 'max-w-[120px]'}`}>
             {player?.info.name || 'Spectator'}
           </div>
           <div className="text-[9px] text-slate-500 uppercase tracking-[0.12em] mt-0.5">
@@ -43,16 +49,16 @@ export const PlayerTelemetry: React.FC<PlayerTelemetryProps> = ({
           </div>
         </div>
 
-        <div className="px-2 sm:px-3 py-1.5 sm:py-2 text-right min-w-[54px] sm:min-w-[72px]">
-          <div className="font-mono text-sm sm:text-base text-white tabular-nums leading-none">{speedKph}</div>
-          <div className="text-[8px] text-slate-500 uppercase mt-0.5 sm:mt-1">
+        <div className={`${compact ? 'px-2 py-1.5 min-w-[54px]' : 'px-3 py-2 min-w-[72px]'} text-right`}>
+          <div className={`font-mono ${compact ? 'text-sm' : 'text-base'} text-white tabular-nums leading-none`}>{speedKph}</div>
+          <div className={`text-[8px] text-slate-500 uppercase ${compact ? 'mt-0.5' : 'mt-1'}`}>
             {isSupersonic ? 'supersonic' : 'km/h'}
           </div>
         </div>
 
         <button
           onClick={onToggleBallCam}
-          className={`self-stretch px-2 sm:px-2.5 border-l border-white/10 text-[9px] font-medium uppercase tracking-wider transition-colors ${
+          className={`self-stretch ${compact ? 'px-2' : 'px-2.5'} border-l border-white/10 text-[9px] font-medium uppercase tracking-wider transition-colors ${
             isBallCam ? 'text-cyan-300 bg-cyan-400/10' : 'text-slate-500 hover:text-slate-300'
           }`}
           title="Toggle Ball Cam (Space)"
