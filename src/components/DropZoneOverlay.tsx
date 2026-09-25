@@ -197,7 +197,13 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
 
       {/* Top Right Replay Controls */}
       {showControls && (
-        <div className="fixed top-3 right-3 z-30 ui-panel p-1 flex items-center gap-1 pointer-events-auto">
+        <div
+          className="fixed z-30 ui-panel p-1 flex items-center gap-1 pointer-events-auto"
+          style={{
+            top: 'max(12px, env(safe-area-inset-top))',
+            right: 'max(12px, env(safe-area-inset-right))',
+          }}
+        >
           <button
             onClick={() => fileInputRef.current?.click()}
             className="ui-button flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium"
@@ -233,9 +239,13 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
           onClick={onShowHud}
           onMouseEnter={() => { revealHoveredRef.current = true; }}
           onMouseLeave={() => { revealHoveredRef.current = false; }}
-          className={`fixed top-3 right-3 z-30 ui-button flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium transition-opacity duration-300 ${
+          className={`fixed z-30 ui-button flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium transition-opacity duration-300 ${
             isRevealAwake ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
+          style={{
+            top: 'max(12px, env(safe-area-inset-top))',
+            right: 'max(12px, env(safe-area-inset-right))',
+          }}
           title="Show interface (H)"
         >
           <Eye size={13} />

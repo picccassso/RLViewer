@@ -362,7 +362,7 @@ export const ReplayVisualizerCanvas: React.FC<ReplayVisualizerCanvasProps> = ({
 
   return (
     <div ref={containerRef} className="absolute inset-0 w-full h-full overflow-hidden">
-      <canvas ref={canvasRef} className="w-full h-full block" />
+      <canvas ref={canvasRef} className="w-full h-full block touch-none" style={{ touchAction: 'none' }} />
     </div>
   );
 };

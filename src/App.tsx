@@ -12,6 +12,8 @@ import { CameraToolbar } from './components/CameraToolbar';
 import { PlaybackTimeline } from './components/PlaybackTimeline';
 import { DropZoneOverlay } from './components/DropZoneOverlay';
 import { RLViewerLogo } from './components/RLViewerLogo';
+import { OrientationLockOverlay } from './components/OrientationLockOverlay';
+import { useDeviceOrientation } from './hooks/useDeviceOrientation';
 import type { AudioStatus } from './audio/ReplayAudio';
 
 function loadAudioSettings() {
@@ -48,6 +50,7 @@ export const App: React.FC = () => {
   const [ballCamOverride, setBallCamOverride] = useState<boolean | null>(null);
   const [cameraSettings, setCameraSettings] = useState<CameraSettings>(DEFAULT_CAMERA_SETTINGS);
   const [isHudVisible, setIsHudVisible] = useState<boolean>(true);
+  const { showRotatePrompt, isFullscreen, toggleFullscreen } = useDeviceOrientation();
 
   useEffect(() => {
     try { localStorage.setItem('rl-viewer-audio', JSON.stringify(audioSettings)); } catch { /* Optional preference. */ }
@@ -202,6 +205,9 @@ export const App: React.FC = () => {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#060913] select-none">
+      {/* 0. Mobile Portrait Orientation Lock Overlay */}
+      <OrientationLockOverlay isVisible={showRotatePrompt} />
+
       {/* 1. 3D Canvas Background */}
       <ReplayVisualizerCanvas
         replayData={replayData}
@@ -239,7 +245,10 @@ export const App: React.FC = () => {
       {isHudVisible && replayData && (
         <>
           {/* 3. Compact score */}
-          <div className="absolute top-3 inset-x-0 flex justify-center z-20 pointer-events-none">
+          <div
+            className="absolute inset-x-0 flex justify-center z-20 pointer-events-none"
+            style={{ top: 'max(12px, env(safe-area-inset-top))' }}
+          >
             <div className="pointer-events-auto">
               <Scoreboard
                 frameState={frameState}
@@ -250,12 +259,24 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="absolute top-3 left-3 z-20 ui-panel px-2.5 py-1.5 pointer-events-none flex items-center">
+          <div
+            className="absolute z-20 ui-panel px-2.5 py-1.5 pointer-events-none flex items-center"
+            style={{
+              top: 'max(12px, env(safe-area-inset-top))',
+              left: 'max(12px, env(safe-area-inset-left))',
+            }}
+          >
             <RLViewerLogo size={20} showText={true} />
           </div>
 
           {/* 4. Analysis and camera controls */}
-          <div className="absolute bottom-[88px] left-3 z-20 pointer-events-none">
+          <div
+            className="absolute z-20 pointer-events-none"
+            style={{
+              left: 'max(12px, env(safe-area-inset-left))',
+              bottom: 'calc(max(8px, env(safe-area-inset-bottom)) + 74px)',
+            }}
+          >
             <div className="pointer-events-auto flex items-end gap-2">
               <TacticalMinimap
                 frameState={frameState}
@@ -279,7 +300,13 @@ export const App: React.FC = () => {
           </div>
 
           {/* 5. Compact player telemetry */}
-          <div className="absolute bottom-[88px] right-3 z-20 pointer-events-none">
+          <div
+            className="absolute z-20 pointer-events-none"
+            style={{
+              right: 'max(12px, env(safe-area-inset-right))',
+              bottom: 'calc(max(8px, env(safe-area-inset-bottom)) + 74px)',
+            }}
+          >
             <PlayerTelemetry
               frameState={frameState}
               activePlayerIndex={activePlayerIndex}
@@ -300,6 +327,8 @@ export const App: React.FC = () => {
               volume={audioSettings.volume}
               muted={audioSettings.muted}
               audioStatus={audioStatus}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={toggleFullscreen}
               onToggleMute={() => setAudioSettings((settings) => ({
                 ...settings,
                 volume: settings.volume || 0.65,

@@ -4,6 +4,42 @@
 
 :root {
   color-scheme: dark;
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+}
+
+@keyframes rotate-device {
+  0%, 18% {
+    transform: rotate(0deg);
+  }
+  46%, 72% {
+    transform: rotate(-90deg);
+  }
+  86%, 100% {
+    transform: rotate(0deg);
+  }
+}
+
+.animate-rotate-device {
+  animation: rotate-device 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transform-origin: center center;
+}
+
+@keyframes pulse-ring {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2.8s ease-in-out infinite;
 }
 
 body {

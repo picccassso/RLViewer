@@ -31,24 +31,24 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
   };
 
   return (
-    <div className="ui-panel flex items-stretch select-none overflow-hidden">
+    <div className="ui-panel flex items-stretch select-none overflow-hidden scale-90 sm:scale-100 origin-top">
       {/* Blue Team Score */}
-      <div className="flex items-center border-l-2 border-blue-500 px-3 py-1.5 text-white min-w-[92px] justify-between">
-        <span className="font-medium tracking-wide text-[11px] text-blue-300">
+      <div className="flex items-center border-l-2 border-blue-500 px-2 sm:px-3 py-1 sm:py-1.5 text-white min-w-[72px] sm:min-w-[92px] justify-between">
+        <span className="font-medium tracking-wide text-[10px] sm:text-[11px] text-blue-300">
           {blueTeamName}
         </span>
-        <span className="text-xl font-semibold font-mono ml-3 text-white">
+        <span className="text-lg sm:text-xl font-semibold font-mono ml-2 sm:ml-3 text-white">
           {teamScores.team0}
         </span>
       </div>
 
       {/* Center Clock */}
-      <div className="flex flex-col items-center justify-center border-x border-white/10 px-4 py-1 min-w-[82px]">
+      <div className="flex flex-col items-center justify-center border-x border-white/10 px-2.5 sm:px-4 py-0.5 sm:py-1 min-w-[68px] sm:min-w-[82px]">
         <span className="uppercase font-mono tracking-[0.14em] text-slate-500 text-[8px]">
           {isOvertime ? 'OVERTIME' : 'TIME'}
         </span>
         <span
-          className={`text-lg font-semibold font-mono tabular-nums ${
+          className={`text-base sm:text-lg font-semibold font-mono tabular-nums ${
             isOvertime ? 'text-amber-300' : 'text-white'
           }`}
         >
@@ -57,11 +57,11 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
       </div>
 
       {/* Orange Team Score */}
-      <div className="flex items-center border-r-2 border-orange-500 px-3 py-1.5 text-white min-w-[92px] justify-between">
-        <span className="text-xl font-semibold font-mono mr-3 text-white">
+      <div className="flex items-center border-r-2 border-orange-500 px-2 sm:px-3 py-1 sm:py-1.5 text-white min-w-[72px] sm:min-w-[92px] justify-between">
+        <span className="text-lg sm:text-xl font-semibold font-mono mr-2 sm:ml-3 text-white">
           {teamScores.team1}
         </span>
-        <span className="font-medium tracking-wide text-[11px] text-orange-300">
+        <span className="font-medium tracking-wide text-[10px] sm:text-[11px] text-orange-300">
           {orangeTeamName}
         </span>
       </div>

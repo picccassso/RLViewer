@@ -8,6 +8,8 @@ import {
   ChevronRight,
   Volume2,
   VolumeX,
+  Maximize,
+  Minimize,
 } from 'lucide-react';
 import { ReplayTickMark } from '../types/replay';
 import type { AudioStatus } from '../audio/ReplayAudio';
@@ -25,6 +27,8 @@ interface PlaybackTimelineProps {
   volume: number;
   muted: boolean;
   audioStatus: AudioStatus;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
   onToggleMute: () => void;
   onChangeVolume: (volume: number) => void;
   tickMarks: ReplayTickMark[];
@@ -45,6 +49,8 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
   volume,
   muted,
   audioStatus,
+  isFullscreen,
+  onToggleFullscreen,
   onToggleMute,
   onChangeVolume,
   tickMarks,
@@ -54,6 +60,7 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
   onStepFrame,
 }) => {
   const progressBarRef = useRef<HTMLDivElement>(null);
+  const isDraggingRef = useRef(false);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPos, setHoverPos] = useState<number>(0);
 
@@ -63,24 +70,49 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
     return `${mins.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const seekFromPointer = (clientX: number) => {
     const rect = progressBarRef.current?.getBoundingClientRect();
     if (!rect || duration <= 0) return;
-    const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const clickX = Math.max(0, Math.min(clientX - rect.left, rect.width));
     const ratio = clickX / rect.width;
     onSeekTime(ratio * duration);
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    isDraggingRef.current = true;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch { /* ignore */ }
+    seekFromPointer(e.clientX);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const rect = progressBarRef.current?.getBoundingClientRect();
     if (!rect || duration <= 0) return;
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     setHoverPos(x);
     setHoverTime((x / rect.width) * duration);
+    if (isDraggingRef.current) {
+      seekFromPointer(e.clientX);
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch { /* ignore */ }
+    }
+    if (e.pointerType === 'touch') {
+      setHoverTime(null);
+    }
   };
 
   const handleMouseLeave = () => {
-    setHoverTime(null);
+    if (!isDraggingRef.current) {
+      setHoverTime(null);
+    }
   };
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -94,14 +126,23 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
     : muted || volume === 0 ? 'Unmute (M)' : 'Mute (M)';
 
   return (
-    <div className="w-full bg-slate-950/95 border-t border-white/10 px-3 pt-7 pb-2 flex flex-col gap-1.5 select-none">
+    <div
+      className="w-full bg-slate-950/95 border-t border-white/10 px-3 pt-7 pb-2 flex flex-col gap-1.5 select-none"
+      style={{
+        paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
+        paddingLeft: 'max(12px, env(safe-area-inset-left))',
+        paddingRight: 'max(12px, env(safe-area-inset-right))',
+      }}
+    >
       {/* 1. Scrubber Track & Discrete Event Tick Markers */}
       <div
         ref={progressBarRef}
-        onClick={handleSeek}
-        onMouseMove={handleMouseMove}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onMouseLeave={handleMouseLeave}
-        className="relative w-full h-3 flex items-center cursor-pointer group"
+        className="relative w-full h-4 py-0.5 flex items-center cursor-pointer group touch-none"
       >
         {/* Track Background */}
         <div className="w-full h-1 bg-white/10 overflow-hidden">
@@ -254,6 +295,19 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
               </button>
             ))}
           </div>
+
+          {/* Fullscreen button */}
+          {onToggleFullscreen && (
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              className="ui-button p-1.5 flex items-center justify-center text-slate-300 hover:text-white"
+              title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+              aria-label={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+            >
+              {isFullscreen ? <Minimize size={15} /> : <Maximize size={15} />}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
+import { Map, ChevronDown, ChevronUp } from 'lucide-react';
 import { FrameState, PlayerInfo } from '../types/replay';
 import { FIELD_WIDTH, FIELD_LENGTH } from '../scene/StadiumManager';
 
@@ -6,13 +7,20 @@ interface TacticalMinimapProps {
   frameState: FrameState | null;
   activePlayerIndex: number;
   onSelectPlayer: (index: number) => void;
+  defaultCollapsed?: boolean;
 }
 
 export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
   frameState,
   activePlayerIndex,
   onSelectPlayer,
+  defaultCollapsed,
 }) => {
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    if (typeof defaultCollapsed === 'boolean') return defaultCollapsed;
+    if (typeof window !== 'undefined' && window.innerHeight < 520) return true;
+    return false;
+  });
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -175,11 +183,38 @@ export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
     }
   };
 
+  if (isCollapsed) {
+    return (
+      <button
+        type="button"
+        onClick={() => setIsCollapsed(false)}
+        className="ui-panel px-2.5 py-1.5 flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors"
+        title="Show Tactical Minimap"
+        aria-label="Show Tactical Minimap"
+      >
+        <Map size={13} className="text-cyan-400" />
+        <span className="text-[10px] font-medium tracking-wide uppercase">Map</span>
+        <ChevronUp size={12} className="text-slate-500" />
+      </button>
+    );
+  }
+
   return (
     <div className="ui-panel p-2 flex flex-col items-center">
       <div className="flex items-center justify-between w-full px-1 mb-1 text-slate-500">
         <span className="tracking-[0.12em] uppercase text-[9px] font-medium">Map</span>
-        <span className="text-[9px] font-mono">click player</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-mono hidden sm:inline">click player</span>
+          <button
+            type="button"
+            onClick={() => setIsCollapsed(true)}
+            className="p-0.5 rounded hover:text-white hover:bg-white/10 transition-colors"
+            title="Minimize Map"
+            aria-label="Minimize Map"
+          >
+            <ChevronDown size={12} />
+          </button>
+        </div>
       </div>
       <canvas
         ref={canvasRef}
