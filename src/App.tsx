@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ParsedReplayData, FrameState } from './types/replay';
 import { parseReplayBuffer, loadSampleReplay } from './parser/replayParser';
 import { CameraMode } from './camera/CameraSuite';
@@ -13,6 +13,7 @@ import { PlaybackTimeline } from './components/PlaybackTimeline';
 import { DropZoneOverlay } from './components/DropZoneOverlay';
 import { RLViewerLogo } from './components/RLViewerLogo';
 import { OrientationLockOverlay } from './components/OrientationLockOverlay';
+import { MobileSpectatorHUD } from './components/mobile/MobileSpectatorHUD';
 import { useDeviceOrientation } from './hooks/useDeviceOrientation';
 import type { AudioStatus } from './audio/ReplayAudio';
 
@@ -51,6 +52,15 @@ export const App: React.FC = () => {
   const [cameraSettings, setCameraSettings] = useState<CameraSettings>(DEFAULT_CAMERA_SETTINGS);
   const [isHudVisible, setIsHudVisible] = useState<boolean>(true);
   const { showRotatePrompt, isCompactMobile, isFullscreen, toggleFullscreen } = useDeviceOrientation();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleToggleMute = useCallback(() => {
+    setAudioSettings((settings) => ({
+      ...settings,
+      volume: settings.volume || 0.65,
+      muted: audioStatus === 'locked' || settings.volume === 0 ? false : !settings.muted,
+    }));
+  }, [audioStatus]);
 
   useEffect(() => {
     try { localStorage.setItem('rl-viewer-audio', JSON.stringify(audioSettings)); } catch { /* Optional preference. */ }
@@ -235,61 +245,67 @@ export const App: React.FC = () => {
         loadingMessage={loadingMessage}
         onFileLoaded={handleFileLoaded}
         onLoadSample={handleLoadSample}
-        showControls={isHudVisible && replayData !== null}
+        showControls={!isCompactMobile && isHudVisible && replayData !== null}
         showStartPrompt={replayData === null && !isLoading}
         onHideHud={() => setIsHudVisible(false)}
-        showRevealButton={!isHudVisible && replayData !== null}
+        showRevealButton={!isCompactMobile && !isHudVisible && replayData !== null}
         onShowHud={() => setIsHudVisible(true)}
+        fileInputRef={fileInputRef}
       />
 
-      {isHudVisible && replayData && (
+      {/* Render dedicated Mobile Spectator HUD or standard Desktop HUD */}
+      {replayData && isCompactMobile ? (
+        <MobileSpectatorHUD
+          replayData={replayData}
+          frameState={frameState}
+          currentTime={currentTime}
+          currentFrame={currentFrame}
+          isPlaying={isPlaying}
+          playbackSpeed={playbackSpeed}
+          cameraMode={cameraMode}
+          activePlayerIndex={activePlayerIndex}
+          isBallCam={isBallCam}
+          liveTeamScores={liveTeamScores}
+          audioSettings={audioSettings}
+          audioStatus={audioStatus}
+          isFullscreen={isFullscreen}
+          onTogglePlay={handleTogglePlay}
+          onSeekTime={handleSeekTime}
+          onSelectPlayer={handleSelectPlayer}
+          onToggleBallCam={handleToggleBallCam}
+          onSetCameraMode={setCameraMode}
+          onChangePlaybackSpeed={setPlaybackSpeed}
+          onToggleMute={handleToggleMute}
+          onToggleFullscreen={toggleFullscreen}
+          onLoadSample={handleLoadSample}
+          onOpenFile={() => fileInputRef.current?.click()}
+        />
+      ) : isHudVisible && replayData && (
         <>
-          {/* 3. Compact score */}
-          <div
-            className="absolute inset-x-0 flex justify-center z-20 pointer-events-none"
-            style={{ top: isCompactMobile ? 'max(10px, env(safe-area-inset-top))' : '12px' }}
-          >
+          {/* 3. Compact score (Desktop) */}
+          <div className="absolute inset-x-0 top-3 flex justify-center z-20 pointer-events-none">
             <div className="pointer-events-auto">
               <Scoreboard
                 frameState={frameState}
                 teamScores={liveTeamScores}
                 blueTeamName="BLUE"
                 orangeTeamName="ORANGE"
-                compact={isCompactMobile}
               />
             </div>
           </div>
 
-          <div
-            className="absolute z-20 ui-panel px-2.5 py-1.5 pointer-events-none flex items-center"
-            style={{
-              top: isCompactMobile ? 'max(10px, env(safe-area-inset-top))' : '12px',
-              left: isCompactMobile ? 'max(10px, env(safe-area-inset-left))' : '12px',
-            }}
-          >
+          <div className="absolute z-20 top-3 left-3 ui-panel px-2.5 py-1.5 pointer-events-none flex items-center">
             <RLViewerLogo size={20} showText={true} />
           </div>
 
-          {/* 4. Analysis and camera controls */}
-          <div
-            className="absolute z-20 pointer-events-none"
-            style={{
-              left: isCompactMobile ? 'max(10px, env(safe-area-inset-left))' : '12px',
-              bottom: isCompactMobile
-                ? 'calc(max(6px, env(safe-area-inset-bottom)) + 58px)'
-                : '88px',
-            }}
-          >
-            <div
-              className={`pointer-events-auto flex items-end gap-1.5 sm:gap-2 origin-bottom-left ${
-                isCompactMobile ? 'scale-90 max-w-[48vw]' : ''
-              }`}
-            >
+          {/* 4. Analysis and camera controls (Desktop) */}
+          <div className="absolute z-20 left-3 bottom-[88px] pointer-events-none">
+            <div className="pointer-events-auto flex items-end gap-2 origin-bottom-left">
               <TacticalMinimap
                 frameState={frameState}
                 activePlayerIndex={activePlayerIndex}
                 onSelectPlayer={handleSelectPlayer}
-                defaultCollapsed={isCompactMobile}
+                defaultCollapsed={false}
               />
               <CameraToolbar
                 mode={cameraMode}
@@ -303,37 +319,23 @@ export const App: React.FC = () => {
                 onUpdateCameraSettings={(patch) =>
                   setCameraSettings((prev) => ({ ...prev, ...patch }))
                 }
-                compact={isCompactMobile}
               />
             </div>
           </div>
 
-          {/* 5. Compact player telemetry */}
-          <div
-            className="absolute z-20 pointer-events-none"
-            style={{
-              right: isCompactMobile ? 'max(10px, env(safe-area-inset-right))' : '12px',
-              bottom: isCompactMobile
-                ? 'calc(max(6px, env(safe-area-inset-bottom)) + 58px)'
-                : '88px',
-            }}
-          >
-            <div
-              className={`pointer-events-auto flex items-end justify-end ${
-                isCompactMobile ? 'max-w-[48vw]' : ''
-              }`}
-            >
+          {/* 5. Compact player telemetry (Desktop) */}
+          <div className="absolute z-20 right-3 bottom-[88px] pointer-events-none">
+            <div className="pointer-events-auto flex items-end justify-end">
               <PlayerTelemetry
                 frameState={frameState}
                 activePlayerIndex={activePlayerIndex}
                 isBallCam={isBallCam}
                 onToggleBallCam={handleToggleBallCam}
-                compact={isCompactMobile}
               />
             </div>
           </div>
 
-          {/* 6. Playback */}
+          {/* 6. Playback (Desktop) */}
           <div className="absolute bottom-0 inset-x-0 z-20">
             <PlaybackTimeline
               currentTime={currentTime}
@@ -347,12 +349,7 @@ export const App: React.FC = () => {
               audioStatus={audioStatus}
               isFullscreen={isFullscreen}
               onToggleFullscreen={toggleFullscreen}
-              compact={isCompactMobile}
-              onToggleMute={() => setAudioSettings((settings) => ({
-                ...settings,
-                volume: settings.volume || 0.65,
-                muted: audioStatus === 'locked' || settings.volume === 0 ? false : !settings.muted,
-              }))}
+              onToggleMute={handleToggleMute}
               onChangeVolume={(volume) => setAudioSettings({ volume, muted: false })}
               tickMarks={replayData?.tickMarks || []}
               onTogglePlay={handleTogglePlay}

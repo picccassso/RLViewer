@@ -337,7 +337,7 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
 /** Marks closer than this share of the timeline sit side by side instead of overlapping. */
 const MARKER_GROUP_SPAN = 0.012;
 
-interface MarkerGroup {
+export interface MarkerGroup {
   percent: number;
   marks: ReplayTickMark[];
 }
@@ -346,7 +346,7 @@ interface MarkerGroup {
  * Only goals and saves appear on the in-game replay timeline. Marks that would
  * overlap are grouped so their icons sit next to each other, centred on the group.
  */
-function groupTimelineMarks(tickMarks: ReplayTickMark[], duration: number): MarkerGroup[] {
+export function groupTimelineMarks(tickMarks: ReplayTickMark[], duration: number): MarkerGroup[] {
   if (duration <= 0) return [];
   const marks = tickMarks
     .filter((tm) => (tm.type === 'goal' || tm.type === 'save') && tm.time >= 0 && tm.time <= duration)
@@ -396,7 +396,7 @@ const BallFace: React.FC<{ cx: number; cy: number; r: number; team: 0 | 1 }> = (
 };
 
 /** Goal: a spiky burst in the scoring team's colour around a ball. */
-const GoalIcon: React.FC<{ team: 0 | 1 }> = ({ team }) => {
+export const GoalIcon: React.FC<{ team: 0 | 1 }> = ({ team }) => {
   const c = TEAM_ICON_COLORS[team];
   const spikes = 12;
   const points = Array.from({ length: spikes * 2 }, (_, i) => {
@@ -413,7 +413,7 @@ const GoalIcon: React.FC<{ team: 0 | 1 }> = ({ team }) => {
 };
 
 /** Save: a ball in the saving team's colour with a halo above it. */
-const SaveIcon: React.FC<{ team: 0 | 1 }> = ({ team }) => {
+export const SaveIcon: React.FC<{ team: 0 | 1 }> = ({ team }) => {
   const c = TEAM_ICON_COLORS[team];
   return (
     <svg width={18} height={20} viewBox="0 0 18 20" style={{ filter: `drop-shadow(0 0 3px ${c.glow})` }}>

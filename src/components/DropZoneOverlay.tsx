@@ -17,6 +17,7 @@ interface DropZoneOverlayProps {
   /** Offer a way back while the interface is hidden. */
   showRevealButton: boolean;
   onShowHud: () => void;
+  fileInputRef?: React.RefObject<HTMLInputElement>;
 }
 
 export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
@@ -29,10 +30,12 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
   onHideHud,
   showRevealButton,
   onShowHud,
+  fileInputRef: externalFileInputRef,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isRevealAwake, setIsRevealAwake] = useState(true);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const internalFileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = externalFileInputRef || internalFileInputRef;
   const revealHoveredRef = useRef(false);
 
   // With the interface hidden, the show button appears while the mouse moves and fades
@@ -154,16 +157,16 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
 
       {/* Start screen: nothing is open yet */}
       {showStartPrompt && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center p-4 text-white">
-          <div className="ui-panel w-full max-w-sm p-6 text-center">
-            <div className="flex justify-center mb-3">
-              <RLViewerLogo size={48} />
+        <div className="fixed inset-0 z-30 flex items-center justify-center p-3 text-white pointer-events-auto">
+          <div className="ui-panel w-full max-w-sm p-4 sm:p-6 text-center max-h-[92dvh] overflow-y-auto shadow-2xl">
+            <div className="flex justify-center mb-2 sm:mb-3">
+              <RLViewerLogo size={42} />
             </div>
             <h2 className="text-lg font-bold tracking-tight">RL<span className="text-cyan-400">Viewer</span></h2>
-            <p className="mt-1 text-xs text-slate-400">
-              Choose a Rocket League .replay file or drop one anywhere. It's parsed locally and never uploaded.
+            <p className="mt-1 text-xs text-slate-400 leading-snug">
+              Choose a Rocket League .replay file or watch a sample match. Parsed 100% locally.
             </p>
-            <div className="mt-4 flex flex-col gap-2">
+            <div className="mt-3 sm:mt-4 flex flex-col gap-2">
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="ui-button ui-button-active flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold"
@@ -179,7 +182,7 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
                 <span>Watch sample match</span>
               </button>
             </div>
-            <p className="mt-4 text-[11px] text-slate-500">
+            <p className="mt-3 text-[10px] text-slate-500">
               Rocket League saves replays in Documents\My Games\Rocket League\TAGame\Demos
             </p>
           </div>
