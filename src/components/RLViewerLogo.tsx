@@ -69,10 +69,10 @@ export const RLViewerLogo: React.FC<RLViewerLogoProps> = ({
       {/* Optional Brand Typography */}
       {showText && (
         <div className="flex items-center gap-1.5 leading-none">
-          <span className="font-bold tracking-tight text-white font-rajdhani text-sm">
-            RL<span className="text-cyan-400">Viewer</span>
+          <span className="font-bold tracking-tight text-white font-display text-[17px]">
+            RL<span className="text-cyan-300">Viewer</span>
           </span>
-          <span className="text-[9px] font-semibold font-mono px-1 py-0.5 rounded bg-cyan-400/10 text-cyan-300 border border-cyan-400/30">
+          <span className="text-[9px] font-semibold font-mono px-1 py-0.5 rounded bg-cyan-400/10 text-cyan-300 ring-1 ring-inset ring-cyan-400/30">
             3D
           </span>
         </div>

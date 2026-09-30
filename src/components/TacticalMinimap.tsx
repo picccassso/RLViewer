@@ -3,6 +3,17 @@ import { Map, ChevronDown, ChevronUp } from 'lucide-react';
 import { FrameState, PlayerInfo } from '../types/replay';
 import { FIELD_WIDTH, FIELD_LENGTH } from '../scene/StadiumManager';
 
+/** Map size in CSS pixels. */
+const MAP_WIDTH = 152;
+const MAP_HEIGHT = 190;
+const MAP_PAD = 12;
+const DRAW_W = MAP_WIDTH - MAP_PAD * 2;
+const DRAW_H = MAP_HEIGHT - MAP_PAD * 2;
+
+// Field X (-4096..+4096) -> map width, Z (-5120..+5120) -> map height
+const toCanvasX = (fieldX: number) => MAP_PAD + ((fieldX + FIELD_WIDTH / 2) / FIELD_WIDTH) * DRAW_W;
+const toCanvasY = (fieldZ: number) => MAP_PAD + ((fieldZ + FIELD_LENGTH / 2) / FIELD_LENGTH) * DRAW_H;
+
 interface TacticalMinimapProps {
   frameState: FrameState | null;
   activePlayerIndex: number;
@@ -30,61 +41,63 @@ export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    // Draw in CSS pixels on a backing store sized for the screen, so it stays sharp.
+    const dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== MAP_WIDTH * dpr) {
+      canvas.width = MAP_WIDTH * dpr;
+      canvas.height = MAP_HEIGHT * dpr;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Clear
+    const w = MAP_WIDTH;
+    const h = MAP_HEIGHT;
     ctx.clearRect(0, 0, w, h);
 
-    // Padding
-    const pad = 12;
-    const drawW = w - pad * 2;
-    const drawH = h - pad * 2;
+    // 1. Field boundary (octagon), each half tinted by the team defending it
+    const cornerCutX = 1024 * (DRAW_W / FIELD_WIDTH);
+    const cornerCutY = 1088 * (DRAW_H / FIELD_LENGTH);
+    const traceField = () => {
+      ctx.beginPath();
+      ctx.moveTo(MAP_PAD + cornerCutX, MAP_PAD);
+      ctx.lineTo(w - MAP_PAD - cornerCutX, MAP_PAD);
+      ctx.lineTo(w - MAP_PAD, MAP_PAD + cornerCutY);
+      ctx.lineTo(w - MAP_PAD, h - MAP_PAD - cornerCutY);
+      ctx.lineTo(w - MAP_PAD - cornerCutX, h - MAP_PAD);
+      ctx.lineTo(MAP_PAD + cornerCutX, h - MAP_PAD);
+      ctx.lineTo(MAP_PAD, h - MAP_PAD - cornerCutY);
+      ctx.lineTo(MAP_PAD, MAP_PAD + cornerCutY);
+      ctx.closePath();
+    };
 
-    // Field scale: X (-4096..+4096) -> drawW, Z (-5120..+5120) -> drawH
-    const toCanvasX = (fieldX: number) => pad + ((fieldX + FIELD_WIDTH / 2) / FIELD_WIDTH) * drawW;
-    const toCanvasY = (fieldZ: number) => pad + ((fieldZ + FIELD_LENGTH / 2) / FIELD_LENGTH) * drawH;
-
-    // 1. Draw Field Boundary (Octagon)
-    const cornerCutX = 1024 * (drawW / FIELD_WIDTH);
-    const cornerCutY = 1088 * (drawH / FIELD_LENGTH);
-
-    ctx.fillStyle = 'rgba(8, 12, 18, 0.78)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
-    ctx.lineWidth = 1;
-
-    ctx.beginPath();
-    ctx.moveTo(pad + cornerCutX, pad);
-    ctx.lineTo(w - pad - cornerCutX, pad);
-    ctx.lineTo(w - pad, pad + cornerCutY);
-    ctx.lineTo(w - pad, h - pad - cornerCutY);
-    ctx.lineTo(w - pad - cornerCutX, h - pad);
-    ctx.lineTo(pad + cornerCutX, h - pad);
-    ctx.lineTo(pad, h - pad - cornerCutY);
-    ctx.lineTo(pad, pad + cornerCutY);
-    ctx.closePath();
+    const turf = ctx.createLinearGradient(0, MAP_PAD, 0, h - MAP_PAD);
+    turf.addColorStop(0, 'rgba(22, 90, 200, 0.22)');
+    turf.addColorStop(0.5, 'rgba(10, 14, 24, 0.6)');
+    turf.addColorStop(1, 'rgba(230, 100, 20, 0.22)');
+    traceField();
+    ctx.fillStyle = turf;
     ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.lineWidth = 1;
     ctx.stroke();
 
-    // 2. Midfield Line & Center Circle
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    // 2. Midfield line & centre circle
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
     ctx.beginPath();
-    ctx.moveTo(pad, h / 2);
-    ctx.lineTo(w - pad, h / 2);
+    ctx.moveTo(MAP_PAD, h / 2);
+    ctx.lineTo(w - MAP_PAD, h / 2);
     ctx.stroke();
-
     ctx.beginPath();
-    ctx.arc(w / 2, h / 2, 22, 0, Math.PI * 2);
+    ctx.arc(w / 2, h / 2, 20, 0, Math.PI * 2);
     ctx.stroke();
 
     // Goals (Blue top at -Z, Orange bottom at +Z)
-    const goalCanvasW = (1785 / FIELD_WIDTH) * drawW;
-    ctx.fillStyle = 'rgba(0, 136, 255, 0.4)';
-    ctx.fillRect(w / 2 - goalCanvasW / 2, pad - 6, goalCanvasW, 6);
-    ctx.fillStyle = 'rgba(255, 102, 0, 0.4)';
-    ctx.fillRect(w / 2 - goalCanvasW / 2, h - pad, goalCanvasW, 6);
+    const goalCanvasW = (1785 / FIELD_WIDTH) * DRAW_W;
+    ctx.fillStyle = '#3b9cff';
+    ctx.fillRect(w / 2 - goalCanvasW / 2, MAP_PAD - 4, goalCanvasW, 3);
+    ctx.fillStyle = '#ff8a1f';
+    ctx.fillRect(w / 2 - goalCanvasW / 2, h - MAP_PAD + 1, goalCanvasW, 3);
 
-    // 3. Draw Players
+    // 3. Players
     frameState.players.forEach((p, idx) => {
       if (!p.isPresent || p.isDemoed) return;
 
@@ -93,26 +106,24 @@ export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
       const isSelected = idx === activePlayerIndex;
       const isBlue = p.info.team === 0;
 
-      // Direction vector from quaternion
-      // Forward in Three space is +X (from Unreal +X)
-      // Rotated forward vector:
+      // Forward in Three space is +X (from Unreal +X): forward = q * (1, 0, 0) * q^-1
       const qx = p.rotation.x, qy = p.rotation.y, qz = p.rotation.z, qw = p.rotation.w;
-      // forward = q * (1, 0, 0) * q^-1
       const fX = 1 - 2 * (qy * qy + qz * qz);
       const fZ = 2 * (qx * qz - qy * qw);
 
-      // Selected pulse ring
       if (isSelected) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+        ctx.beginPath();
+        ctx.arc(px, py, 12, 0, Math.PI * 2);
+        ctx.fill();
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(px, py, 11, 0, Math.PI * 2);
         ctx.stroke();
       }
 
       // Orientation pointer
       const angle = Math.atan2(fZ, fX);
-      ctx.fillStyle = isBlue ? '#38bdf8' : '#fb923c';
+      ctx.fillStyle = isBlue ? '#93c5fd' : '#fdba74';
       ctx.beginPath();
       ctx.moveTo(px + Math.cos(angle) * 12, py + Math.sin(angle) * 12);
       ctx.lineTo(px + Math.cos(angle + 2.4) * 6, py + Math.sin(angle + 2.4) * 6);
@@ -120,36 +131,34 @@ export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
       ctx.closePath();
       ctx.fill();
 
-      // Player circle
-      ctx.fillStyle = isBlue ? '#0088ff' : '#ff6600';
+      // Player disc
+      ctx.fillStyle = isBlue ? '#1672e8' : '#f06a0f';
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(px, py, 6.5, 0, Math.PI * 2);
+      ctx.arc(px, py, 7, 0, Math.PI * 2);
       ctx.fill();
+      ctx.stroke();
 
-      // Player Number (1-6)
+      // Player number (1-6)
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 9px Rajdhani, sans-serif';
+      ctx.font = "bold 9px 'Chakra Petch', Rajdhani, sans-serif";
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`${idx + 1}`, px, py);
+      ctx.fillText(`${idx + 1}`, px, py + 0.5);
     });
 
-    // 4. Draw Ball
+    // 4. Ball
     const bx = toCanvasX(frameState.ball.position.x);
     const by = toCanvasY(frameState.ball.position.z);
-
-    // Ball outline
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.beginPath();
-    ctx.arc(bx, by, 7, 0, Math.PI * 2);
+    ctx.arc(bx, by, 7.5, 0, Math.PI * 2);
     ctx.fill();
-
-    // Ball center
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
     ctx.arc(bx, by, 4.5, 0, Math.PI * 2);
     ctx.fill();
-
   }, [frameState, activePlayerIndex]);
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -157,25 +166,14 @@ export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
     if (!canvas || !frameState) return;
 
     const rect = canvas.getBoundingClientRect();
-    const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
-    const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
-    const clickX = (e.clientX - rect.left) * scaleX;
-    const clickY = (e.clientY - rect.top) * scaleY;
-
-    const pad = 12;
-    const drawW = canvas.width - pad * 2;
-    const drawH = canvas.height - pad * 2;
-
-    const toCanvasX = (fieldX: number) => pad + ((fieldX + FIELD_WIDTH / 2) / FIELD_WIDTH) * drawW;
-    const toCanvasY = (fieldZ: number) => pad + ((fieldZ + FIELD_LENGTH / 2) / FIELD_LENGTH) * drawH;
+    const clickX = (e.clientX - rect.left) * (rect.width > 0 ? MAP_WIDTH / rect.width : 1);
+    const clickY = (e.clientY - rect.top) * (rect.height > 0 ? MAP_HEIGHT / rect.height : 1);
 
     // Check click near players
     for (let i = 0; i < frameState.players.length; i++) {
       const p = frameState.players[i];
       if (!p.isPresent) continue;
-      const px = toCanvasX(p.position.x);
-      const py = toCanvasY(p.position.z);
-      const dist = Math.hypot(clickX - px, clickY - py);
+      const dist = Math.hypot(clickX - toCanvasX(p.position.x), clickY - toCanvasY(p.position.z));
       if (dist <= 16) {
         onSelectPlayer(i);
         break;
@@ -188,40 +186,39 @@ export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
       <button
         type="button"
         onClick={() => setIsCollapsed(false)}
-        className="ui-panel px-2.5 py-1.5 flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors"
+        className="hud-panel hud-btn h-9 px-3 text-[12px] uppercase tracking-wider"
         title="Show Tactical Minimap"
         aria-label="Show Tactical Minimap"
       >
-        <Map size={13} className="text-cyan-400" />
-        <span className="text-[10px] font-medium tracking-wide uppercase">Map</span>
-        <ChevronUp size={12} className="text-slate-500" />
+        <Map size={14} className="text-cyan-300" />
+        <span>Map</span>
+        <ChevronUp size={13} className="text-slate-500" />
       </button>
     );
   }
 
   return (
-    <div className="ui-panel p-2 flex flex-col items-center">
-      <div className="flex items-center justify-between w-full px-1 mb-1 text-slate-500">
-        <span className="tracking-[0.12em] uppercase text-[9px] font-medium">Map</span>
-        <div className="flex items-center gap-2">
-          <span className="text-[9px] font-mono hidden sm:inline">click player</span>
-          <button
-            type="button"
-            onClick={() => setIsCollapsed(true)}
-            className="p-0.5 rounded hover:text-white hover:bg-white/10 transition-colors"
-            title="Minimize Map"
-            aria-label="Minimize Map"
-          >
-            <ChevronDown size={12} />
-          </button>
-        </div>
+    <div className="hud-panel p-2 flex flex-col items-center">
+      <div className="flex items-center justify-between w-full pl-1 mb-1.5">
+        <span className="hud-label">Map</span>
+        <button
+          type="button"
+          onClick={() => setIsCollapsed(true)}
+          className="hud-btn h-5 w-5 rounded text-slate-500"
+          title="Minimize Map"
+          aria-label="Minimize Map"
+        >
+          <ChevronDown size={13} />
+        </button>
       </div>
       <canvas
         ref={canvasRef}
-        width={152}
-        height={190}
+        width={MAP_WIDTH}
+        height={MAP_HEIGHT}
+        style={{ width: MAP_WIDTH, height: MAP_HEIGHT }}
         onClick={handleClick}
         className="cursor-pointer"
+        title="Click a player to follow them"
       />
     </div>
   );

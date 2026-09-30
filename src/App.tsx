@@ -294,13 +294,13 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="absolute z-20 top-3 left-3 ui-panel px-2.5 py-1.5 pointer-events-none flex items-center">
-            <RLViewerLogo size={20} showText={true} />
+          <div className="absolute z-20 top-3 left-3 hud-panel h-10 px-3 pointer-events-none flex items-center">
+            <RLViewerLogo size={22} showText={true} />
           </div>
 
           {/* 4. Analysis and camera controls (Desktop) */}
-          <div className="absolute z-20 left-3 bottom-[88px] pointer-events-none">
-            <div className="pointer-events-auto flex items-end gap-2 origin-bottom-left">
+          <div className="absolute z-20 left-3 bottom-[var(--hud-bottom)] pointer-events-none">
+            <div className="pointer-events-auto flex items-end gap-2.5 origin-bottom-left">
               <TacticalMinimap
                 frameState={frameState}
                 activePlayerIndex={activePlayerIndex}
@@ -324,7 +324,7 @@ export const App: React.FC = () => {
           </div>
 
           {/* 5. Compact player telemetry (Desktop) */}
-          <div className="absolute z-20 right-3 bottom-[88px] pointer-events-none">
+          <div className="absolute z-20 right-3 bottom-[var(--hud-bottom)] pointer-events-none">
             <div className="pointer-events-auto flex items-end justify-end">
               <PlayerTelemetry
                 frameState={frameState}

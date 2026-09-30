@@ -127,29 +127,35 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
     <>
       {/* Full screen drag receiver overlay */}
       <div
-        className={`fixed inset-0 transition-colors duration-200 z-50 ${
-          isDragging
-            ? 'pointer-events-auto bg-blue-600/30 border-4 border-dashed border-blue-400'
-            : 'pointer-events-none'
+        className={`fixed inset-0 z-50 transition-opacity duration-200 ${
+          isDragging ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
         }`}
       >
         {isDragging && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 text-white select-none pointer-events-none">
-            <UploadCloud size={32} className="text-slate-300 mb-3" />
-            <h2 className="text-base font-semibold tracking-wide">Drop replay file</h2>
-            <p className="text-xs text-slate-500 mt-1">.replay files are parsed locally</p>
+          <div className="absolute inset-0 flex items-center justify-center bg-[#040710]/85 backdrop-blur-sm p-6 select-none pointer-events-none">
+            <div className="flex h-full max-h-[420px] w-full max-w-2xl flex-col items-center justify-center rounded-3xl border-2 border-dashed border-cyan-300/50 bg-cyan-400/[0.04] text-white">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-400/15 ring-1 ring-cyan-300/40">
+                <UploadCloud size={28} className="text-cyan-200" />
+              </div>
+              <h2 className="font-display text-2xl font-bold tracking-wide">Drop to open replay</h2>
+              <p className="mt-1 text-sm text-slate-400">.replay files are parsed locally in your browser</p>
+            </div>
           </div>
         )}
       </div>
 
       {/* Loading Overlay */}
       {isLoading && (
-        <div className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md text-white select-none">
-          <div className="ui-panel p-5 flex items-center gap-3 max-w-sm text-left">
-            <Loader2 size={20} className="text-slate-300 animate-spin shrink-0" />
+        <div className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-[#040710]/80 backdrop-blur-md text-white select-none">
+          <div className="hud-panel rounded-2xl px-6 py-5 flex items-center gap-4 max-w-sm text-left">
+            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center">
+              <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+              <Loader2 size={40} strokeWidth={1.5} className="absolute text-cyan-300 animate-spin" />
+              <RLViewerLogo size={20} />
+            </div>
             <div>
-              <h3 className="text-sm font-semibold">Parsing replay</h3>
-              <p className="text-xs text-slate-500 mt-0.5">{loadingMessage}</p>
+              <h3 className="font-display text-[17px] font-bold">Parsing replay</h3>
+              <p className="text-[13px] text-slate-400 mt-0.5">{loadingMessage}</p>
             </div>
           </div>
         </div>
@@ -157,34 +163,78 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
 
       {/* Start screen: nothing is open yet */}
       {showStartPrompt && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center p-3 text-white pointer-events-auto">
-          <div className="ui-panel w-full max-w-sm p-4 sm:p-6 text-center max-h-[92dvh] overflow-y-auto shadow-2xl">
-            <div className="flex justify-center mb-2 sm:mb-3">
-              <RLViewerLogo size={42} />
+        <div className="fixed inset-0 z-30 flex items-center justify-center p-4 text-white pointer-events-auto overflow-hidden">
+          {/* Backdrop: team glows over a faint pitch grid */}
+          <div
+            className="absolute inset-0 -z-10"
+            style={{
+              background:
+                'radial-gradient(ellipse 60% 70% at 0% 50%, rgb(22 114 232 / 0.28), transparent 70%),' +
+                'radial-gradient(ellipse 60% 70% at 100% 50%, rgb(240 106 15 / 0.24), transparent 70%),' +
+                'radial-gradient(ellipse 50% 50% at 50% 50%, rgb(34 211 238 / 0.06), transparent 70%),' +
+                '#05070f',
+            }}
+          />
+          <div
+            className="absolute inset-0 -z-10 opacity-[0.35]"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgb(255 255 255 / 0.04) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.04) 1px, transparent 1px)',
+              backgroundSize: '48px 48px',
+              maskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black, transparent)',
+              WebkitMaskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black, transparent)',
+            }}
+          />
+
+          <div className="hud-panel rounded-2xl w-full max-w-md p-6 sm:p-8 text-center max-h-[92dvh] overflow-y-auto">
+            <div className="flex justify-center">
+              <RLViewerLogo size={56} />
             </div>
-            <h2 className="text-lg font-bold tracking-tight">RL<span className="text-cyan-400">Viewer</span></h2>
-            <p className="mt-1 text-xs text-slate-400 leading-snug">
-              Choose a Rocket League .replay file or watch a sample match. Parsed 100% locally.
+            <h1 className="mt-3 font-display text-3xl font-bold tracking-tight">
+              RL<span className="text-cyan-300">Viewer</span>
+            </h1>
+            <p className="mt-1.5 text-[15px] text-slate-400 leading-snug">
+              Watch any Rocket League replay in 3D, from any player's camera.
             </p>
-            <div className="mt-3 sm:mt-4 flex flex-col gap-2">
+
+            <div className="mt-6 flex flex-col gap-2.5">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="ui-button ui-button-active flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold"
+                className="flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-cyan-300 to-cyan-500 font-display text-[15px] font-bold text-slate-950 shadow-[0_6px_20px_-6px_rgb(34_211_238/0.7)] transition hover:brightness-110 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
               >
-                <FileCode size={14} />
-                <span>Choose replay</span>
+                <FileCode size={17} />
+                <span>Choose replay file</span>
               </button>
               <button
                 onClick={onLoadSample}
-                className="ui-button flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium"
+                className="hud-btn h-11 rounded-xl bg-white/[0.06] text-[15px] text-slate-200 ring-1 ring-inset ring-white/10 hover:bg-white/10"
               >
-                <Play size={13} />
+                <Play size={15} />
                 <span>Watch sample match</span>
               </button>
             </div>
-            <p className="mt-3 text-[10px] text-slate-500">
-              Rocket League saves replays in Documents\My Games\Rocket League\TAGame\Demos
-            </p>
+
+            <div className="mt-4 flex items-center gap-3 text-[12px] text-slate-500">
+              <div className="h-px flex-1 bg-white/10" />
+              <span>or drop a .replay file anywhere</span>
+              <div className="h-px flex-1 bg-white/10" />
+            </div>
+
+            <div className="mt-5 rounded-lg bg-black/30 px-3 py-2.5 text-left ring-1 ring-inset ring-white/5">
+              <div className="hud-label text-[10px] text-slate-500">Replays are saved in</div>
+              <code className="mt-1.5 block break-all font-mono text-[11px] leading-relaxed text-slate-300">
+                Documents\My Games\Rocket League\TAGame\Demos
+              </code>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[12px] text-slate-500">
+              <span className="flex items-center gap-1.5"><kbd className="hud-kbd">Space</kbd> Ball cam</span>
+              <span className="flex items-center gap-1.5"><kbd className="hud-kbd">K</kbd> Play</span>
+              <span className="flex items-center gap-1.5"><kbd className="hud-kbd">1</kbd>–<kbd className="hud-kbd">6</kbd> Players</span>
+              <span className="flex items-center gap-1.5"><kbd className="hud-kbd">H</kbd> Hide UI</span>
+            </div>
+
+            <p className="mt-4 text-[11px] text-slate-600">Parsed 100% locally. Nothing is uploaded.</p>
           </div>
         </div>
       )}
@@ -201,7 +251,7 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
       {/* Top Right Replay Controls */}
       {showControls && (
         <div
-          className="fixed z-30 ui-panel p-1 flex items-center gap-1 pointer-events-auto"
+          className="fixed z-30 hud-panel p-1 flex items-center gap-0.5 pointer-events-auto"
           style={{
             top: 'max(12px, env(safe-area-inset-top))',
             right: 'max(12px, env(safe-area-inset-right))',
@@ -209,30 +259,30 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
         >
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="ui-button flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium"
+            className="hud-btn h-8 px-2.5 text-[13px]"
             title="Open a .replay file"
           >
-            <FileCode size={13} />
+            <FileCode size={14} />
             <span>Open</span>
           </button>
 
           <button
             onClick={onLoadSample}
-            className="ui-button flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium"
+            className="hud-btn h-8 px-2.5 text-[13px]"
             title="Load sample match"
           >
-            <Play size={12} />
+            <Play size={13} />
             <span>Sample</span>
           </button>
 
-          <div className="h-4 w-px bg-white/10 mx-0.5" />
+          <div className="h-5 w-px bg-white/10 mx-0.5" />
           <button
             onClick={onHideHud}
-            className="ui-button p-1.5"
+            className="hud-btn h-8 w-8"
             title="Hide interface (H)"
             aria-label="Hide interface"
           >
-            <EyeOff size={13} />
+            <EyeOff size={14} />
           </button>
         </div>
       )}
@@ -242,7 +292,7 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
           onClick={onShowHud}
           onMouseEnter={() => { revealHoveredRef.current = true; }}
           onMouseLeave={() => { revealHoveredRef.current = false; }}
-          className={`fixed z-30 ui-button flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium transition-opacity duration-300 ${
+          className={`fixed z-30 hud-panel hud-btn h-9 px-3 text-[13px] transition-opacity duration-300 ${
             isRevealAwake ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
           style={{
@@ -251,9 +301,9 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
           }}
           title="Show interface (H)"
         >
-          <Eye size={13} />
+          <Eye size={14} />
           <span>Show interface</span>
-          <kbd className="ml-0.5 rounded border border-white/15 px-1 font-mono text-[10px] text-slate-400">H</kbd>
+          <kbd className="hud-kbd ml-0.5">H</kbd>
         </button>
       )}
     </>

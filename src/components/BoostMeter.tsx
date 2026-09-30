@@ -17,12 +17,15 @@ export const BoostMeter: React.FC<{ boost: number }> = ({ boost }) => {
   const filled = (amount / 100) * CIRCUMFERENCE;
 
   return (
-    <div className="relative select-none" style={{ width: SIZE, height: SIZE }}>
+    <div
+      className="relative select-none rounded-full shadow-[0_10px_30px_-6px_rgb(0_0_0/0.75)]"
+      style={{ width: SIZE, height: SIZE }}
+    >
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="absolute inset-0">
         <defs>
           <radialGradient id="boost-meter-disc">
-            <stop offset="0%" stopColor="#1e293b" stopOpacity="0.92" />
-            <stop offset="100%" stopColor="#020617" stopOpacity="0.92" />
+            <stop offset="0%" stopColor="#1a2238" stopOpacity="0.95" />
+            <stop offset="100%" stopColor="#060914" stopOpacity="0.96" />
           </radialGradient>
           <linearGradient id="boost-meter-fill" x1="0" y1="1" x2="0" y2="0">
             <stop offset="0%" stopColor="#ff6a00" />
@@ -30,7 +33,8 @@ export const BoostMeter: React.FC<{ boost: number }> = ({ boost }) => {
           </linearGradient>
         </defs>
 
-        <circle cx={CENTRE} cy={CENTRE} r={CENTRE - 1} fill="url(#boost-meter-disc)" stroke="rgb(255 255 255 / 0.12)" />
+        <circle cx={CENTRE} cy={CENTRE} r={CENTRE - 1} fill="url(#boost-meter-disc)" stroke="rgb(255 255 255 / 0.1)" />
+        <circle cx={CENTRE} cy={CENTRE} r={RING_RADIUS - RING_WIDTH / 2 - 4} fill="none" stroke="rgb(255 255 255 / 0.06)" />
         <circle
           cx={CENTRE}
           cy={CENTRE}
@@ -72,7 +76,7 @@ export const BoostMeter: React.FC<{ boost: number }> = ({ boost }) => {
         >
           {amount}
         </span>
-        <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.25em] text-amber-300/80">Boost</span>
+        <span className="mt-1 font-display text-[10px] font-bold uppercase tracking-[0.3em] text-amber-300/80">Boost</span>
       </div>
     </div>
   );

@@ -23,6 +23,7 @@ export default {
       },
       fontFamily: {
         display: ['Rajdhani', 'sans-serif'],
+        numeric: ['"Chakra Petch"', 'Rajdhani', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       }
     },

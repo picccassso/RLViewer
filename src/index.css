@@ -8,6 +8,8 @@
   --sar: env(safe-area-inset-right, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
+  /* Gap between the bottom of the screen and the desktop HUD clusters: clears the playback bar. */
+  --hud-bottom: 112px;
 }
 
 @keyframes rotate-device {
@@ -84,14 +86,129 @@ body {
     @apply border-white/20 bg-slate-800 text-white;
   }
 
+  /*
+   * Desktop HUD surfaces. The arena behind them is bright and busy, so every panel
+   * gets a near-opaque fill, a hairline edge, a top highlight and a drop shadow to
+   * lift it clear of the scene.
+   */
+  .hud-panel {
+    @apply rounded-xl text-slate-100;
+    background: linear-gradient(180deg, rgb(20 27 45 / 0.9) 0%, rgb(8 11 22 / 0.94) 100%);
+    border: 1px solid rgb(255 255 255 / 0.08);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      0 10px 30px -8px rgb(0 0 0 / 0.65),
+      0 2px 6px rgb(0 0 0 / 0.35);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+  }
+
+  .hud-label {
+    @apply font-display text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-slate-400;
+  }
+
+  .hud-btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg font-display font-semibold text-slate-300 transition-colors duration-150;
+    @apply hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60;
+    @apply disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent;
+  }
+
+  .hud-btn-active {
+    @apply bg-white/[0.12] text-white;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+  }
+
+  /* A row of mutually exclusive options, e.g. camera mode or playback speed. */
+  .hud-segment {
+    @apply flex items-center gap-0.5 rounded-lg bg-black/30 p-0.5;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+  }
+
+  .hud-kbd {
+    @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded border border-white/15 bg-white/5 px-1 font-mono text-[10px] font-medium leading-none text-slate-300;
+    box-shadow: inset 0 -1px 0 rgb(255 255 255 / 0.08);
+  }
+
+  /* Slider with a filled track; the fill width comes from --fill (0%–100%). */
+  .hud-range {
+    @apply h-4 w-full cursor-pointer appearance-none bg-transparent;
+    --fill: 50%;
+    --accent: #22d3ee;
+  }
+  .hud-range::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent) var(--fill), rgb(255 255 255 / 0.12) var(--fill));
+  }
+  .hud-range::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.12);
+  }
+  .hud-range::-moz-range-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--accent);
+  }
+  .hud-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    margin-top: -5px;
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: #fff;
+    border: 0;
+    box-shadow: 0 0 0 3px rgb(34 211 238 / 0.25), 0 1px 3px rgb(0 0 0 / 0.5);
+    transition: transform 120ms ease;
+  }
+  .hud-range::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: #fff;
+    border: 0;
+    box-shadow: 0 0 0 3px rgb(34 211 238 / 0.25), 0 1px 3px rgb(0 0 0 / 0.5);
+  }
+  .hud-range:hover::-webkit-slider-thumb {
+    transform: scale(1.15);
+  }
+  .hud-range:focus-visible {
+    outline: none;
+  }
+  .hud-range:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 4px rgb(34 211 238 / 0.55), 0 1px 3px rgb(0 0 0 / 0.5);
+  }
+  .hud-range:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+
   /* Player names over the 3D view, placed by CSS2DRenderer. */
   .nameplate {
-    @apply whitespace-nowrap rounded border-l-[3px] bg-slate-950/80 px-2 py-0.5 text-[15px] font-bold leading-tight text-white;
+    @apply relative mb-1.5 whitespace-nowrap rounded-md px-2 pb-1 pt-0.5 font-display text-[14px] font-bold leading-tight text-white;
+    background: linear-gradient(180deg, rgb(15 20 34 / 0.88), rgb(6 9 18 / 0.92));
+    border: 1px solid rgb(255 255 255 / 0.1);
+    border-top-width: 2px;
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.45);
     text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
   }
 
+  /* Small pointer down to the car. */
+  .nameplate::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    width: 8px;
+    height: 8px;
+    transform: translate(-50%, -4px) rotate(45deg);
+    background: rgb(6 9 18 / 0.92);
+    border-right: 1px solid rgb(255 255 255 / 0.1);
+    border-bottom: 1px solid rgb(255 255 255 / 0.1);
+  }
+
   .nameplate-boost {
-    @apply mt-0.5 mb-0.5 h-[3px] overflow-hidden rounded-full bg-white/15;
+    @apply mt-0.5 h-[3px] overflow-hidden rounded-full bg-white/15;
   }
 
   .nameplate-boost-fill {
@@ -102,11 +219,11 @@ body {
   }
 
   .nameplate-blue {
-    @apply border-blue-500;
+    border-top-color: #3b9cff;
   }
 
   .nameplate-orange {
-    @apply border-orange-500;
+    border-top-color: #ff8a1f;
   }
 }
 

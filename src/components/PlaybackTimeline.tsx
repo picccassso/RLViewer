@@ -2,10 +2,10 @@ import React, { useRef, useState } from 'react';
 import {
   Play,
   Pause,
-  ArrowLeft,
-  ArrowRight,
-  ChevronLeft,
-  ChevronRight,
+  RotateCcw,
+  RotateCw,
+  StepBack,
+  StepForward,
   Volume2,
   VolumeX,
   Maximize,
@@ -29,7 +29,6 @@ interface PlaybackTimelineProps {
   audioStatus: AudioStatus;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
-  compact?: boolean;
   onToggleMute: () => void;
   onChangeVolume: (volume: number) => void;
   tickMarks: ReplayTickMark[];
@@ -52,7 +51,6 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
   audioStatus,
   isFullscreen,
   onToggleFullscreen,
-  compact = false,
   onToggleMute,
   onChangeVolume,
   tickMarks,
@@ -129,13 +127,15 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
 
   return (
     <div
-      className={`w-full bg-slate-950/95 border-t border-white/10 select-none flex flex-col ${
-        compact ? 'px-2.5 pt-5 pb-1 gap-1' : 'px-3 pt-7 pb-2 gap-1.5'
-      }`}
+      className="relative w-full select-none flex flex-col gap-1.5 px-4 pt-7 pb-2.5"
       style={{
-        paddingBottom: compact ? 'max(6px, env(safe-area-inset-bottom))' : 'max(8px, env(safe-area-inset-bottom))',
-        paddingLeft: compact ? 'max(10px, env(safe-area-inset-left))' : 'max(12px, env(safe-area-inset-left))',
-        paddingRight: compact ? 'max(10px, env(safe-area-inset-right))' : 'max(12px, env(safe-area-inset-right))',
+        paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
+        paddingLeft: 'max(16px, env(safe-area-inset-left))',
+        paddingRight: 'max(16px, env(safe-area-inset-right))',
+        background: 'linear-gradient(180deg, rgb(7 10 20 / 0.82) 0%, rgb(5 7 15 / 0.96) 45%, rgb(4 6 12 / 0.98) 100%)',
+        boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.07), 0 -12px 32px -12px rgb(0 0 0 / 0.6)',
+        backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
       }}
     >
       {/* 1. Scrubber Track & Discrete Event Tick Markers */}
@@ -146,12 +146,18 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         onMouseLeave={handleMouseLeave}
-        className="relative w-full h-4 py-0.5 flex items-center cursor-pointer group touch-none"
+        className="relative w-full h-4 flex items-center cursor-pointer group touch-none"
       >
-        {/* Track Background */}
-        <div className="w-full h-1 bg-white/10 overflow-hidden">
+        {/* Track */}
+        <div className="relative w-full h-1.5 rounded-full bg-white/[0.12] overflow-hidden transition-[height] duration-150 group-hover:h-2">
+          {hoverTime !== null && (
+            <div
+              className="absolute inset-y-0 left-0 bg-white/15"
+              style={{ width: `${hoverPos}px` }}
+            />
+          )}
           <div
-            className="h-full bg-slate-300"
+            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-cyan-500 to-cyan-300"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
@@ -159,7 +165,7 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
         {/* Hover Time Tooltip */}
         {hoverTime !== null && (
           <div
-            className="absolute -top-7 transform -translate-x-1/2 ui-panel px-2 py-0.5 text-[10px] font-mono text-white pointer-events-none z-20"
+            className="absolute -top-8 -translate-x-1/2 hud-panel rounded-md px-2 py-1 font-numeric text-[11px] tabular-nums text-white pointer-events-none z-20"
             style={{ left: `${hoverPos}px` }}
           >
             {formatTime(hoverTime)}
@@ -170,7 +176,7 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
         {markerGroups.map((group) => (
           <div
             key={group.marks[0].frame}
-            className="absolute bottom-full transform -translate-x-1/2 flex flex-col items-center z-10"
+            className="absolute bottom-full mb-0.5 -translate-x-1/2 flex flex-col items-center z-10"
             style={{ left: `${group.percent}%` }}
           >
             <div className="flex items-end gap-px">
@@ -182,150 +188,147 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
                     e.stopPropagation();
                     onSeekTime(tm.time);
                   }}
+                  onPointerDown={(e) => e.stopPropagation()}
                   className="relative group/marker cursor-pointer transition-transform hover:scale-125"
                   aria-label={`${tm.description} at ${formatTime(tm.time)}`}
                 >
                   {tm.type === 'goal' ? <GoalIcon team={tm.team} /> : <SaveIcon team={tm.team} />}
 
                   {/* Marker Tooltip */}
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/marker:flex ui-panel px-2 py-1 text-[10px] font-medium text-white whitespace-nowrap z-30 flex-col items-center">
-                    <span>{tm.description}</span>
-                    <span className="text-[9px] text-slate-400 font-mono">{formatTime(tm.time)}</span>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/marker:flex hud-panel rounded-md px-2.5 py-1.5 whitespace-nowrap z-30 flex-col items-center gap-0.5">
+                    <span className="font-display text-[12px] font-semibold text-white">{tm.description}</span>
+                    <span className="font-numeric text-[10px] text-slate-400">{formatTime(tm.time)}</span>
                   </div>
                 </button>
               ))}
             </div>
-            <div className="w-px h-1 bg-white/30" />
+            <div className="w-px h-1.5 bg-white/25" />
           </div>
         ))}
 
         {/* Playhead thumb */}
         <div
-          className="absolute w-1 h-3 bg-white transform -translate-x-1/2 pointer-events-none"
+          className="absolute h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-white pointer-events-none shadow-[0_0_0_3px_rgb(34_211_238/0.35),0_1px_4px_rgb(0_0_0/0.6)] transition-transform duration-150 group-hover:scale-110"
           style={{ left: `${progressPercent}%` }}
         />
       </div>
 
       {/* 2. Playback Controls Bar */}
-      <div className={`flex items-center justify-between text-slate-300 ${compact ? 'text-[11px]' : 'text-xs'}`}>
-        {/* Left: Step Controls & Play/Pause */}
-        <div className={`flex items-center ${compact ? 'gap-1' : 'gap-1.5 md:gap-2'}`}>
-          {/* Step Back 1s */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-slate-300">
+        {/* Left: transport */}
+        <div className="flex items-center gap-1">
           <button
             onClick={() => onSeekTime(Math.max(0, currentTime - SKIP_SECONDS))}
-            className={`ui-button flex items-center gap-0.5 ${
-              compact ? 'px-1 py-1 text-[9px]' : 'px-1.5 py-1.5 text-[10px]'
-            } font-medium tabular-nums`}
+            className="hud-btn h-8 px-2 text-[12px] tabular-nums"
             title={`Back ${SKIP_SECONDS} seconds`}
             aria-label={`Back ${SKIP_SECONDS} seconds`}
           >
-            <ArrowLeft size={compact ? 13 : 14} />
+            <RotateCcw size={14} />
             <span>{SKIP_SECONDS}s</span>
           </button>
 
-          {/* Step Back 1 Frame */}
           <button
             onClick={() => onStepFrame(-1)}
-            className={`ui-button ${compact ? 'p-1' : 'p-1.5'}`}
+            className="hud-btn h-8 w-8"
             title="Step Back 1 Frame"
+            aria-label="Step Back 1 Frame"
           >
-            <ChevronLeft size={compact ? 14 : 16} />
+            <StepBack size={15} />
           </button>
 
-          {/* Play / Pause Primary Button */}
           <button
             onClick={onTogglePlay}
-            className={`ui-button ui-button-active ${
-              compact ? 'px-2.5 py-1 text-[9px]' : 'px-3 py-1.5 text-[10px]'
-            } text-white font-medium flex items-center gap-1.5`}
+            className="mx-1 flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-950 shadow-[0_0_0_4px_rgb(255_255_255/0.08),0_4px_14px_rgb(0_0_0/0.5)] transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            title={isPlaying ? 'Pause (K)' : 'Play (K)'}
+            aria-label={isPlaying ? 'Pause' : 'Play'}
           >
-            {isPlaying ? <Pause size={compact ? 13 : 14} /> : <Play size={compact ? 13 : 14} />}
-            <span className="uppercase tracking-wide">{isPlaying ? 'Pause' : 'Play'}</span>
+            {isPlaying ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" className="ml-0.5" />}
           </button>
 
-          {/* Step Forward 1 Frame */}
           <button
             onClick={() => onStepFrame(1)}
-            className={`ui-button ${compact ? 'p-1' : 'p-1.5'}`}
+            className="hud-btn h-8 w-8"
             title="Step Forward 1 Frame"
+            aria-label="Step Forward 1 Frame"
           >
-            <ChevronRight size={compact ? 14 : 16} />
+            <StepForward size={15} />
           </button>
 
-          {/* Step Forward 1s */}
           <button
             onClick={() => onSeekTime(Math.min(duration, currentTime + SKIP_SECONDS))}
-            className={`ui-button flex items-center gap-0.5 ${
-              compact ? 'px-1 py-1 text-[9px]' : 'px-1.5 py-1.5 text-[10px]'
-            } font-medium tabular-nums`}
+            className="hud-btn h-8 px-2 text-[12px] tabular-nums"
             title={`Forward ${SKIP_SECONDS} seconds`}
             aria-label={`Forward ${SKIP_SECONDS} seconds`}
           >
             <span>{SKIP_SECONDS}s</span>
-            <ArrowRight size={compact ? 13 : 14} />
+            <RotateCw size={14} />
           </button>
         </div>
 
         {/* Center: Match Time & Frame Display */}
-        <div className={`flex items-center font-mono ${compact ? 'gap-1.5 text-[10px]' : 'gap-2 text-[11px]'}`}>
-          <span className="text-white font-medium tabular-nums">
-            {formatTime(currentTime)}
-          </span>
-          <span className="text-slate-500">/</span>
-          <span className="text-slate-500 tabular-nums">{formatTime(duration)}</span>
-          <span className="hidden sm:inline-block text-[9px] text-slate-600 ml-2 border-l border-white/10 pl-2">
+        <div className="flex items-baseline gap-2 font-numeric tabular-nums">
+          <span className="text-[15px] font-semibold text-white">{formatTime(currentTime)}</span>
+          <span className="text-[13px] text-slate-500">/ {formatTime(duration)}</span>
+          <span className="hidden lg:inline-block ml-1 border-l border-white/10 pl-3 font-mono text-[10px] text-slate-500">
             Frame {currentFrame} / {totalFrames}
           </span>
         </div>
 
-        {/* Right: Sound and playback speed */}
-        <div className={`flex items-center ${compact ? 'gap-1' : 'gap-2'}`}>
-          <button type="button" onClick={onToggleMute} className={`ui-button ${compact ? 'p-1' : 'p-1.5'} flex items-center gap-1`}
-            title={audioLabel} aria-label={audioLabel} aria-pressed={muted}
-            disabled={audioStatus === 'unavailable'}>
-            {muted || volume === 0 || audioStatus !== 'ready' ? (
-              <VolumeX size={compact ? 14 : 15} />
-            ) : (
-              <Volume2 size={compact ? 14 : 15} />
-            )}
-            {audioStatus === 'locked' && <span className={compact ? 'text-[9px]' : 'text-[10px]'}>Enable sound</span>}
-          </button>
-          <input type="range" min="0" max="100" step="1" value={Math.round(volume * 100)}
-            onChange={(event) => onChangeVolume(Number(event.target.value) / 100)}
-            aria-label="Sound volume" title={`Volume ${Math.round(volume * 100)}%`}
-            disabled={audioStatus === 'unavailable'} className="hidden md:block w-16 accent-slate-300" />
-          <div className="flex items-center gap-0.5 border border-white/10 rounded p-0.5">
+        {/* Right: Sound, playback speed and fullscreen */}
+        <div className="flex items-center justify-end gap-2">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onToggleMute}
+              className={`hud-btn h-8 ${audioStatus === 'locked' ? 'px-2.5 text-[12px] text-cyan-200 bg-cyan-400/10 hover:bg-cyan-400/20' : 'w-8'}`}
+              title={audioLabel}
+              aria-label={audioLabel}
+              aria-pressed={muted}
+              disabled={audioStatus === 'unavailable'}
+            >
+              {muted || volume === 0 || audioStatus !== 'ready' ? <VolumeX size={15} /> : <Volume2 size={15} />}
+              {audioStatus === 'locked' && <span>Enable sound</span>}
+            </button>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={Math.round(volume * 100)}
+              onChange={(event) => onChangeVolume(Number(event.target.value) / 100)}
+              aria-label="Sound volume"
+              title={`Volume ${Math.round(volume * 100)}%`}
+              disabled={audioStatus === 'unavailable'}
+              className="hud-range hidden md:block w-20"
+              style={{ '--fill': `${muted ? 0 : Math.round(volume * 100)}%`, '--accent': '#e2e8f0' } as React.CSSProperties}
+            />
+          </div>
+
+          <div className="hud-segment">
             {speeds.map((s) => (
               <button
                 key={s}
                 onClick={() => onChangeSpeed(s)}
-                className={`${
-                  compact ? 'px-1 py-0.5 text-[8px]' : 'px-1.5 py-0.5 text-[9px]'
-                } rounded-sm font-mono transition-colors ${
-                  playbackSpeed === s
-                    ? 'bg-white/10 text-white'
-                    : 'text-slate-600 hover:text-white'
+                className={`hud-btn h-7 px-2 font-numeric text-[11px] font-medium ${
+                  playbackSpeed === s ? 'hud-btn-active' : 'text-slate-500'
                 }`}
+                aria-pressed={playbackSpeed === s}
+                title={`Playback speed ${s}x`}
               >
                 {s}x
               </button>
             ))}
           </div>
 
-          {/* Fullscreen button */}
           {onToggleFullscreen && (
             <button
               type="button"
               onClick={onToggleFullscreen}
-              className={`ui-button ${compact ? 'p-1' : 'p-1.5'} flex items-center justify-center text-slate-300 hover:text-white`}
+              className="hud-btn h-8 w-8"
               title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
               aria-label={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
             >
-              {isFullscreen ? (
-                <Minimize size={compact ? 14 : 15} />
-              ) : (
-                <Maximize size={compact ? 14 : 15} />
-              )}
+              {isFullscreen ? <Minimize size={15} /> : <Maximize size={15} />}
             </button>
           )}
         </div>

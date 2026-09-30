@@ -1,15 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CameraMode } from '../camera/CameraSuite';
 import { PlayerInfo } from '../types/replay';
 import { CameraSettings } from '../math/cameraMath';
-import {
-  Camera,
-  Video,
-  Compass,
-  Sliders,
-  Eye,
-  MapPin,
-} from 'lucide-react';
+import { Camera, Video, Compass, SlidersHorizontal, Eye, MapPin, X } from 'lucide-react';
 
 interface CameraToolbarProps {
   mode: CameraMode;
@@ -21,8 +14,52 @@ interface CameraToolbarProps {
   onSelectPlayer: (index: number) => void;
   onToggleBallCam: () => void;
   onUpdateCameraSettings: (settings: Partial<CameraSettings>) => void;
-  compact?: boolean;
 }
+
+const MODES: { mode: CameraMode; label: string; title: string; Icon: typeof Camera }[] = [
+  { mode: 'pov', label: 'POV', title: 'Player POV Chase Camera', Icon: Camera },
+  { mode: 'director', label: 'Director', title: 'Dynamic Broadcast Spectator Camera', Icon: Video },
+  { mode: 'free', label: 'Free', title: 'Free-Fly Orbit Controls', Icon: Compass },
+  { mode: 'tactical', label: 'Overhead', title: 'Top-Down Tactical View', Icon: MapPin },
+];
+
+const PRESETS: { label: string; title: string; settings: Partial<CameraSettings> }[] = [
+  {
+    label: 'Default',
+    title: 'Standard Rocket League Default Settings',
+    settings: { fov: 110, distance: 270, height: 100, angle: -3, stiffness: 0.45, swivel_speed: 5.0, transition_speed: 1.3 },
+  },
+  {
+    label: 'Zen',
+    title: "Zen's Competitive Profile",
+    settings: { fov: 110, distance: 270, height: 90, angle: -3, stiffness: 0.4, swivel_speed: 4.5, transition_speed: 1.2 },
+  },
+  {
+    label: 'Vatira',
+    title: "Vatira's Competitive Profile",
+    settings: { fov: 110, distance: 260, height: 90, angle: -4, stiffness: 0.55, swivel_speed: 5.0, transition_speed: 1.3 },
+  },
+];
+
+type NumericSetting = 'fov' | 'distance' | 'height' | 'angle' | 'stiffness' | 'swivel_speed' | 'transition_speed';
+
+const SLIDERS: {
+  key: NumericSetting;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  fallback: number;
+  format: (value: number) => string;
+}[] = [
+  { key: 'fov', label: 'FOV', min: 80, max: 110, step: 1, fallback: 110, format: (v) => `${Math.round(v)}°` },
+  { key: 'distance', label: 'Distance', min: 100, max: 400, step: 5, fallback: 270, format: (v) => `${Math.round(v)} uu` },
+  { key: 'height', label: 'Height', min: 40, max: 200, step: 5, fallback: 100, format: (v) => `${Math.round(v)} uu` },
+  { key: 'angle', label: 'Angle', min: -15, max: 0, step: 1, fallback: -3, format: (v) => `${v}°` },
+  { key: 'stiffness', label: 'Stiffness', min: 0, max: 1, step: 0.05, fallback: 0.45, format: (v) => v.toFixed(2) },
+  { key: 'swivel_speed', label: 'Swivel Speed', min: 1, max: 10, step: 0.2, fallback: 5.0, format: (v) => v.toFixed(1) },
+  { key: 'transition_speed', label: 'Transition Speed', min: 1, max: 2, step: 0.1, fallback: 1.3, format: (v) => v.toFixed(1) },
+];
 
 export const CameraToolbar: React.FC<CameraToolbarProps> = ({
   mode,
@@ -34,372 +71,166 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
   onSelectPlayer,
   onToggleBallCam,
   onUpdateCameraSettings,
-  compact = false,
 }) => {
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    if (!showSettings) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowSettings(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [showSettings]);
+
+  const teams = [0, 1].map((team) => players.map((p, idx) => ({ p, idx })).filter(({ p }) => p.team === team));
 
   return (
-    <div className="flex flex-col gap-1.5 pointer-events-auto">
-      {/* 1. Camera Mode Toolbar */}
-      <div
-        className={`ui-panel flex items-center ${
-          compact
-            ? 'p-0.5 gap-0.5 overflow-x-auto no-scrollbar max-w-full'
-            : 'p-1 gap-0.5'
-        }`}
-      >
-        {/* POV Cam */}
-        <button
-          onClick={() => onSetMode('pov')}
-          className={`flex items-center gap-1.5 ${
-            compact ? 'px-1.5 py-1 text-[9px]' : 'px-2.5 py-1.5 text-[10px]'
-          } rounded font-medium transition-colors ${
-            mode === 'pov'
-              ? 'bg-white/10 text-white'
-              : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
-          }`}
-          title="Player POV Chase Camera"
-        >
-          <Camera size={compact ? 13 : 14} />
-          <span>POV</span>
-        </button>
+    <div className="relative pointer-events-auto">
+      {/* Camera profile, floating above the toolbar so opening it moves nothing */}
+      {showSettings && (
+        <div className="hud-panel absolute bottom-full left-0 mb-2 w-[300px] max-h-[calc(100dvh-220px)] overflow-y-auto p-3.5 text-white">
+          <div className="flex items-center justify-between">
+            <span className="hud-label text-slate-300">Camera profile</span>
+            <button
+              type="button"
+              onClick={() => setShowSettings(false)}
+              className="hud-btn h-6 w-6 -mr-1"
+              aria-label="Close camera profile"
+            >
+              <X size={14} />
+            </button>
+          </div>
 
-        {/* Director Cam */}
-        <button
-          onClick={() => onSetMode('director')}
-          className={`flex items-center gap-1.5 ${
-            compact ? 'px-1.5 py-1 text-[9px]' : 'px-2.5 py-1.5 text-[10px]'
-          } rounded font-medium transition-colors ${
-            mode === 'director'
-              ? 'bg-white/10 text-white'
-              : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
-          }`}
-          title="Dynamic Broadcast Spectator Camera"
-        >
-          <Video size={compact ? 13 : 14} />
-          <span>DIRECTOR</span>
-        </button>
+          <div className="mt-3 grid grid-cols-4 gap-1">
+            {PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => onUpdateCameraSettings(preset.settings)}
+                className="hud-btn h-7 bg-white/5 text-[12px]"
+                title={preset.title}
+              >
+                {preset.label}
+              </button>
+            ))}
+            {players[activePlayerIndex] && (
+              <button
+                type="button"
+                onClick={() => onUpdateCameraSettings(players[activePlayerIndex].camera_settings)}
+                className="hud-btn h-7 bg-cyan-400/15 text-[12px] text-cyan-200 hover:bg-cyan-400/25 hover:text-cyan-100"
+                title="Reset to selected player recorded settings"
+              >
+                Player
+              </button>
+            )}
+          </div>
 
-        {/* Free Orbit Cam */}
-        <button
-          onClick={() => onSetMode('free')}
-          className={`flex items-center gap-1.5 ${
-            compact ? 'px-1.5 py-1 text-[9px]' : 'px-2.5 py-1.5 text-[10px]'
-          } rounded font-medium transition-colors ${
-            mode === 'free'
-              ? 'bg-white/10 text-white'
-              : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
-          }`}
-          title="Free-Fly Orbit Controls"
-        >
-          <Compass size={compact ? 13 : 14} />
-          <span>FREE</span>
-        </button>
+          <div className="mt-3.5 flex flex-col gap-3 border-t border-white/[0.07] pt-3.5">
+            {SLIDERS.map(({ key, label, min, max, step, fallback, format }) => {
+              const value = cameraSettings[key] ?? fallback;
+              const fill = ((value - min) / (max - min)) * 100;
+              return (
+                <label key={key} className="flex flex-col gap-1.5">
+                  <div className="flex items-baseline justify-between">
+                    <span className="font-display text-[13px] font-semibold text-slate-300">{label}</span>
+                    <span className="font-numeric text-[12px] tabular-nums text-white">{format(value)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={value}
+                    onChange={(e) => onUpdateCameraSettings({ [key]: Number(e.target.value) })}
+                    className="hud-range"
+                    style={{ '--fill': `${fill}%` } as React.CSSProperties}
+                  />
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-        {/* Tactical 2D Overhead */}
-        <button
-          onClick={() => onSetMode('tactical')}
-          className={`flex items-center gap-1.5 ${
-            compact ? 'px-1.5 py-1 text-[9px]' : 'px-2.5 py-1.5 text-[10px]'
-          } rounded font-medium transition-colors ${
-            mode === 'tactical'
-              ? 'bg-white/10 text-white'
-              : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
-          }`}
-          title="Top-Down Tactical View"
-        >
-          <MapPin size={compact ? 13 : 14} />
-          <span>{compact ? 'TOP' : 'OVERHEAD'}</span>
-        </button>
+      <div className="hud-panel p-1.5 flex flex-col gap-1.5">
+        {/* 1. Camera mode */}
+        <div className="flex items-center gap-1.5">
+          <div className="hud-segment">
+            {MODES.map(({ mode: m, label, title, Icon }) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => onSetMode(m)}
+                className={`hud-btn h-8 w-9 xl:w-auto xl:px-2.5 text-[12px] uppercase tracking-wider ${mode === m ? 'hud-btn-active' : 'text-slate-400'}`}
+                title={title}
+                aria-pressed={mode === m}
+              >
+                <Icon size={14} />
+                <span className="hidden xl:inline">{label}</span>
+              </button>
+            ))}
+          </div>
 
-        {/* Divider */}
-        <div className={`w-[1px] bg-white/10 ${compact ? 'h-4 mx-0.5' : 'h-5 mx-1'}`} />
+          <button
+            type="button"
+            onClick={onToggleBallCam}
+            className={`hud-btn h-8 w-8 ${isBallCam ? 'bg-cyan-400/15 text-cyan-200 hover:bg-cyan-400/20 hover:text-cyan-100' : 'text-slate-400'}`}
+            title="Toggle Ball Cam [Space]"
+            aria-pressed={isBallCam}
+          >
+            <Eye size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSettings(!showSettings)}
+            className={`hud-btn h-8 w-8 ${showSettings ? 'hud-btn-active' : 'text-slate-400'}`}
+            title="Camera Profile Settings"
+            aria-expanded={showSettings}
+          >
+            <SlidersHorizontal size={15} />
+          </button>
+        </div>
 
-        {/* BallCam Toggle Button */}
-        <button
-          onClick={onToggleBallCam}
-          className={`rounded ${
-            compact ? 'p-1 text-[9px]' : 'p-1.5 text-[10px]'
-          } transition-colors ${
-            isBallCam
-              ? 'bg-cyan-400/10 text-cyan-300'
-              : 'text-slate-500 hover:text-white'
-          }`}
-          title="Toggle Ball Cam [Space]"
-        >
-          <Eye size={compact ? 13 : 14} />
-        </button>
-
-        {/* Camera Settings Slider Toggle */}
-        <button
-          onClick={() => setShowSettingsModal(!showSettingsModal)}
-          className={`rounded transition-colors ${
-            compact ? 'p-1 text-xs' : 'p-1.5 text-xs'
-          } ${
-            showSettingsModal
-              ? 'bg-white/20 text-white'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
-          }`}
-          title="Camera Profile Settings"
-        >
-          <Sliders size={compact ? 13 : 14} />
-        </button>
+        {/* 2. Player switcher, one row per team */}
+        {players.length > 0 && (
+          <div className="flex flex-col gap-1 border-t border-white/[0.06] pt-1.5">
+            {teams.map((members, team) => members.length > 0 && (
+              <div key={team} className="flex items-center gap-1">
+                {members.map(({ p, idx }) => {
+                  const isSelected = activePlayerIndex === idx;
+                  const isBlue = team === 0;
+                  return (
+                    <button
+                      key={p.index}
+                      type="button"
+                      onClick={() => onSelectPlayer(idx)}
+                      className={`hud-btn h-7 min-w-0 flex-1 justify-start gap-1.5 pl-1 pr-2 text-[13px] ${
+                        isSelected
+                          ? isBlue
+                            ? 'bg-[#1672e8]/30 text-white ring-1 ring-inset ring-[#3b9cff]/60 hover:bg-[#1672e8]/40'
+                            : 'bg-[#f06a0f]/30 text-white ring-1 ring-inset ring-[#ff8a1f]/60 hover:bg-[#f06a0f]/40'
+                          : 'text-slate-400'
+                      }`}
+                      title={`Switch to ${p.name} [Key ${idx + 1}]`}
+                      aria-pressed={isSelected}
+                    >
+                      <span
+                        className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded font-numeric text-[10px] font-bold text-white ${
+                          isBlue ? 'bg-[#1672e8]' : 'bg-[#f06a0f]'
+                        } ${isSelected ? '' : 'opacity-60'}`}
+                      >
+                        {idx + 1}
+                      </span>
+                      <span className="max-w-[64px] xl:max-w-[88px] truncate">{p.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-
-      {/* 2. Live 6-Player Switcher */}
-      {players.length > 0 && (
-        <div
-          className={`ui-panel flex items-center gap-0.5 overflow-x-auto ${
-            compact ? 'p-0.5 no-scrollbar max-w-full' : 'p-1 max-w-[90vw]'
-          }`}
-        >
-          <span className={`text-slate-600 uppercase tracking-wider ${compact ? 'text-[8px] px-1' : 'text-[9px] px-1.5'}`}>
-            Players
-          </span>
-
-          {players.map((p, idx) => {
-            const isSelected = activePlayerIndex === idx;
-            const isBlue = p.team === 0;
-
-            return (
-              <button
-                key={p.index}
-                onClick={() => onSelectPlayer(idx)}
-                className={`flex items-center gap-1.5 rounded font-medium transition-colors shrink-0 ${
-                  compact ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-1 text-[10px]'
-                } ${
-                  isSelected
-                    ? isBlue
-                      ? 'bg-blue-500/15 text-blue-200'
-                      : 'bg-orange-500/15 text-orange-200'
-                    : isBlue
-                    ? 'text-slate-500 hover:text-blue-200 hover:bg-white/5'
-                    : 'text-slate-500 hover:text-orange-200 hover:bg-white/5'
-                }`}
-                title={`Switch to ${p.name} [Key ${idx + 1}]`}
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    isBlue ? 'bg-blue-500' : 'bg-orange-500'
-                  }`}
-                />
-                <span className={`truncate ${compact ? 'max-w-[60px]' : 'max-w-[90px]'}`}>{p.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 3. Camera Settings Sliders Popover */}
-      {showSettingsModal && (
-        <div className="ui-panel p-3 w-80 flex flex-col gap-3 text-xs text-white max-h-[80vh] overflow-y-auto">
-          <div className="flex items-center justify-between border-b border-white/10 pb-2">
-            <span className="font-medium uppercase tracking-wider text-slate-300 text-[10px]">
-              Camera Profile Settings
-            </span>
-            <span className="text-[10px] text-slate-400 font-mono">
-              Live Profile
-            </span>
-          </div>
-
-          {/* Quick Presets */}
-          <div className="flex flex-col gap-1.5 pb-2 border-b border-white/10">
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
-              Presets
-            </span>
-            <div className="grid grid-cols-4 gap-1">
-              <button
-                type="button"
-                onClick={() =>
-                  onUpdateCameraSettings({
-                    fov: 110,
-                    distance: 270,
-                    height: 100,
-                    angle: -3,
-                    stiffness: 0.45,
-                    swivel_speed: 5.0,
-                    transition_speed: 1.3,
-                  })
-                }
-                className="px-1.5 py-1 rounded bg-white/5 hover:bg-white/15 text-[10px] text-slate-200 transition-colors text-center"
-                title="Standard Rocket League Default Settings"
-              >
-                Default
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  onUpdateCameraSettings({
-                    fov: 110,
-                    distance: 270,
-                    height: 90,
-                    angle: -3,
-                    stiffness: 0.4,
-                    swivel_speed: 4.5,
-                    transition_speed: 1.2,
-                  })
-                }
-                className="px-1.5 py-1 rounded bg-white/5 hover:bg-white/15 text-[10px] text-slate-200 transition-colors text-center"
-                title="Zen's Competitive Profile"
-              >
-                Zen
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  onUpdateCameraSettings({
-                    fov: 110,
-                    distance: 260,
-                    height: 90,
-                    angle: -4,
-                    stiffness: 0.55,
-                    swivel_speed: 5.0,
-                    transition_speed: 1.3,
-                  })
-                }
-                className="px-1.5 py-1 rounded bg-white/5 hover:bg-white/15 text-[10px] text-slate-200 transition-colors text-center"
-                title="Vatira's Competitive Profile"
-              >
-                Vatira
-              </button>
-              {players[activePlayerIndex] && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    onUpdateCameraSettings(players[activePlayerIndex].camera_settings)
-                  }
-                  className="px-1.5 py-1 rounded bg-blue-500/20 hover:bg-blue-500/30 text-blue-200 text-[10px] transition-colors text-center font-medium"
-                  title="Reset to selected player recorded settings"
-                >
-                  Player
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* FOV */}
-          <div className="flex flex-col gap-1">
-            <div className="flex justify-between font-mono text-[11px]">
-              <span className="text-slate-400">FOV</span>
-              <span>{Math.round(cameraSettings.fov)}°</span>
-            </div>
-            <input
-              type="range"
-              min="80"
-              max="110"
-              value={cameraSettings.fov}
-              onChange={(e) => onUpdateCameraSettings({ fov: Number(e.target.value) })}
-              className="accent-blue-500 w-full"
-            />
-          </div>
-
-          {/* Distance */}
-          <div className="flex flex-col gap-1">
-            <div className="flex justify-between font-mono text-[11px]">
-              <span className="text-slate-400">Distance</span>
-              <span>{Math.round(cameraSettings.distance)} uu</span>
-            </div>
-            <input
-              type="range"
-              min="100"
-              max="400"
-              step="5"
-              value={cameraSettings.distance}
-              onChange={(e) => onUpdateCameraSettings({ distance: Number(e.target.value) })}
-              className="accent-blue-500 w-full"
-            />
-          </div>
-
-          {/* Height */}
-          <div className="flex flex-col gap-1">
-            <div className="flex justify-between font-mono text-[11px]">
-              <span className="text-slate-400">Height</span>
-              <span>{Math.round(cameraSettings.height)} uu</span>
-            </div>
-            <input
-              type="range"
-              min="40"
-              max="200"
-              step="5"
-              value={cameraSettings.height}
-              onChange={(e) => onUpdateCameraSettings({ height: Number(e.target.value) })}
-              className="accent-blue-500 w-full"
-            />
-          </div>
-
-          {/* Angle */}
-          <div className="flex flex-col gap-1">
-            <div className="flex justify-between font-mono text-[11px]">
-              <span className="text-slate-400">Angle (Pitch)</span>
-              <span>{cameraSettings.angle}°</span>
-            </div>
-            <input
-              type="range"
-              min="-15"
-              max="0"
-              step="1"
-              value={cameraSettings.angle}
-              onChange={(e) => onUpdateCameraSettings({ angle: Number(e.target.value) })}
-              className="accent-blue-500 w-full"
-            />
-          </div>
-
-          {/* Stiffness */}
-          <div className="flex flex-col gap-1">
-            <div className="flex justify-between font-mono text-[11px]">
-              <span className="text-slate-400">Stiffness</span>
-              <span>{(cameraSettings.stiffness ?? 0.45).toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={cameraSettings.stiffness}
-              onChange={(e) => onUpdateCameraSettings({ stiffness: Number(e.target.value) })}
-              className="accent-blue-500 w-full"
-            />
-          </div>
-
-          {/* Swivel Speed */}
-          <div className="flex flex-col gap-1">
-            <div className="flex justify-between font-mono text-[11px]">
-              <span className="text-slate-400">Swivel Speed</span>
-              <span>{(cameraSettings.swivel_speed ?? 5.0).toFixed(1)}</span>
-            </div>
-            <input
-              type="range"
-              min="1.0"
-              max="10.0"
-              step="0.2"
-              value={cameraSettings.swivel_speed ?? 5.0}
-              onChange={(e) =>
-                onUpdateCameraSettings({ swivel_speed: Number(e.target.value) })
-              }
-              className="accent-blue-500 w-full"
-            />
-          </div>
-
-          {/* Transition Speed */}
-          <div className="flex flex-col gap-1">
-            <div className="flex justify-between font-mono text-[11px]">
-              <span className="text-slate-400">Transition Speed</span>
-              <span>{(cameraSettings.transition_speed ?? 1.3).toFixed(1)}</span>
-            </div>
-            <input
-              type="range"
-              min="1.0"
-              max="2.0"
-              step="0.1"
-              value={cameraSettings.transition_speed}
-              onChange={(e) =>
-                onUpdateCameraSettings({ transition_speed: Number(e.target.value) })
-              }
-              className="accent-blue-500 w-full"
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 };
