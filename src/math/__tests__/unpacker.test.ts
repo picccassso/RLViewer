@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { getFrameSampleAtTime, unpackFrame } from '../frameUnpacker';
+import { getFrameSampleAtTime, interpolatePosition, unpackFrame } from '../frameUnpacker';
 import {
   ParsedReplayData,
   TOTAL_FLOATS_PER_FRAME,
@@ -15,12 +15,12 @@ describe('Frame Unpacker & Interpolation', () => {
     const buffer = new Float32Array(totalFrames * TOTAL_FLOATS_PER_FRAME);
 
     // Populate Frame 0:
-    // Ball at (0, 92.75, 0), rot (0,0,0,1), vel (100, 0, 0)
+    // Ball at (0, 92.75, 0), rot (0,0,0,1), moving 100 uu per frame along x
     buffer[0] = 0;
     buffer[1] = 92.75;
     buffer[2] = 0;
     buffer[6] = 1.0;
-    buffer[7] = 100;
+    buffer[7] = 100 / 0.033;
 
     // Player 0: Pos (1000, 20, -500), rot (0,0,0,1), boost 50, flags = 1 (present) | 2 (ballcam)
     const p0Offset = FLOATS_PER_BALL;
@@ -47,6 +47,7 @@ describe('Frame Unpacker & Interpolation', () => {
     buffer[frame1Offset + 1] = 92.75;
     buffer[frame1Offset + 2] = 0;
     buffer[frame1Offset + 6] = 1.0;
+    buffer[frame1Offset + 7] = 100 / 0.033;
 
     // Player 0 moved to (1100, 20, -500), boost consumed down to 40
     const p0Offset1 = frame1Offset + FLOATS_PER_BALL;
@@ -170,5 +171,23 @@ describe('Frame Unpacker & Interpolation', () => {
       frameB: 0,
       alpha: 0,
     });
+  });
+
+  it('follows the recorded velocities between frames', () => {
+    // A ball at the top of its arc: rising at A, falling at B, level with each other.
+    const gap = 1 / 30;
+    const pA = new THREE.Vector3(0, 500, 0);
+    const pB = new THREE.Vector3(0, 500, 0);
+    const vA = new THREE.Vector3(0, 650 * gap / 2, 0);
+    const vB = new THREE.Vector3(0, -650 * gap / 2, 0);
+    const mid = interpolatePosition(pA, vA, pB, vB, 0.5, gap);
+    // True apex: 650/8 * gap^2 above the endpoints; a straight line would stay at 500.
+    expect(mid.y).toBeCloseTo(500 + (650 / 8) * gap * gap, 4);
+    expect(interpolatePosition(pA, vA, pB, vB, 0, gap).equals(pA)).toBe(true);
+    expect(interpolatePosition(pA, vA, pB, vB, 1, gap).equals(pB)).toBe(true);
+
+    // A step far longer than the recorded speed allows is a teleport: cross it straight.
+    const far = new THREE.Vector3(3000, 500, 0);
+    expect(interpolatePosition(pA, vA, far, vB, 0.5, gap).y).toBeCloseTo(500, 6);
   });
 });

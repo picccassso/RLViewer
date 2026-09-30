@@ -81,9 +81,41 @@ export function getFrameSampleAtTime(
 }
 
 /**
+ * Position `t` of the way from frame A to frame B, `gap` seconds apart, along the cubic
+ * that leaves A at velocity `vA` and arrives at B at velocity `vB`. Jumps and falls follow
+ * their arc, and speed carries smoothly through each recorded frame instead of changing
+ * abruptly at every one. A step too long for the recorded speeds (a teleport the replay
+ * does not flag) is crossed in a straight line, like before.
+ */
+export function interpolatePosition(
+  pA: THREE.Vector3,
+  vA: THREE.Vector3,
+  pB: THREE.Vector3,
+  vB: THREE.Vector3,
+  t: number,
+  gap: number
+): THREE.Vector3 {
+  const out = new THREE.Vector3().lerpVectors(pA, pB, t);
+  if (t <= 0 || t >= 1 || gap <= 0) return out;
+  if (pA.distanceTo(pB) > Math.max(200, 3 * Math.max(vA.length(), vB.length()) * gap)) return out;
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const h00 = 2 * t3 - 3 * t2 + 1;
+  const h10 = t3 - 2 * t2 + t;
+  const h01 = 3 * t2 - 2 * t3;
+  const h11 = t3 - t2;
+  return out
+    .copy(pA).multiplyScalar(h00)
+    .addScaledVector(vA, h10 * gap)
+    .addScaledVector(pB, h01)
+    .addScaledVector(vB, h11 * gap);
+}
+
+/**
  * Extracts and optionally interpolates frame state from the packed Float32Array.
  * If alpha = 0, returns exact frameA.
- * If alpha > 0, smoothly interpolates position, slerps rotation, and lerps boost.
+ * If alpha > 0, follows positions along their recorded velocities, slerps rotation,
+ * and lerps boost.
  */
 export function unpackFrame(
   replayData: ParsedReplayData,
@@ -98,11 +130,9 @@ export function unpackFrame(
   const offsetB = iB * TOTAL_FLOATS_PER_FRAME;
 
   const t = Math.min(Math.max(alpha, 0), 1);
+  const gap = framesBuffer[offsetB + META_TIME_OFFSET] - framesBuffer[offsetA + META_TIME_OFFSET];
 
   // Ball
-  const ballPosA = new THREE.Vector3(framesBuffer[offsetA + 0], framesBuffer[offsetA + 1], framesBuffer[offsetA + 2]);
-  const ballPosB = new THREE.Vector3(framesBuffer[offsetB + 0], framesBuffer[offsetB + 1], framesBuffer[offsetB + 2]);
-  const ballPos = new THREE.Vector3().lerpVectors(ballPosA, ballPosB, t);
 
   const ballRotA = new THREE.Quaternion(framesBuffer[offsetA + 3], framesBuffer[offsetA + 4], framesBuffer[offsetA + 5], framesBuffer[offsetA + 6]);
   const ballRotB = new THREE.Quaternion(framesBuffer[offsetB + 3], framesBuffer[offsetB + 4], framesBuffer[offsetB + 5], framesBuffer[offsetB + 6]);
@@ -111,6 +141,10 @@ export function unpackFrame(
   const ballVelA = new THREE.Vector3(framesBuffer[offsetA + 7], framesBuffer[offsetA + 8], framesBuffer[offsetA + 9]);
   const ballVelB = new THREE.Vector3(framesBuffer[offsetB + 7], framesBuffer[offsetB + 8], framesBuffer[offsetB + 9]);
   const ballVel = new THREE.Vector3().lerpVectors(ballVelA, ballVelB, t);
+
+  const ballPosA = new THREE.Vector3(framesBuffer[offsetA + 0], framesBuffer[offsetA + 1], framesBuffer[offsetA + 2]);
+  const ballPosB = new THREE.Vector3(framesBuffer[offsetB + 0], framesBuffer[offsetB + 1], framesBuffer[offsetB + 2]);
+  const ballPos = interpolatePosition(ballPosA, ballVelA, ballPosB, ballVelB, t, gap);
 
   // Players
   const playersState: FrameState['players'] = [];
@@ -138,9 +172,6 @@ export function unpackFrame(
       (flags & 4) === (flagsB & 4);
     const playerT = canInterpolatePlayer ? t : 0;
 
-    const posA = new THREE.Vector3(framesBuffer[pOffsetA + 0], framesBuffer[pOffsetA + 1], framesBuffer[pOffsetA + 2]);
-    const posB = new THREE.Vector3(framesBuffer[pOffsetB + 0], framesBuffer[pOffsetB + 1], framesBuffer[pOffsetB + 2]);
-    const pos = new THREE.Vector3().lerpVectors(posA, posB, playerT);
 
     const rotA = new THREE.Quaternion(framesBuffer[pOffsetA + 3], framesBuffer[pOffsetA + 4], framesBuffer[pOffsetA + 5], framesBuffer[pOffsetA + 6]);
     const rotB = new THREE.Quaternion(framesBuffer[pOffsetB + 3], framesBuffer[pOffsetB + 4], framesBuffer[pOffsetB + 5], framesBuffer[pOffsetB + 6]);
@@ -149,6 +180,10 @@ export function unpackFrame(
     const velA = new THREE.Vector3(framesBuffer[pOffsetA + 7], framesBuffer[pOffsetA + 8], framesBuffer[pOffsetA + 9]);
     const velB = new THREE.Vector3(framesBuffer[pOffsetB + 7], framesBuffer[pOffsetB + 8], framesBuffer[pOffsetB + 9]);
     const vel = new THREE.Vector3().lerpVectors(velA, velB, playerT);
+
+    const posA = new THREE.Vector3(framesBuffer[pOffsetA + 0], framesBuffer[pOffsetA + 1], framesBuffer[pOffsetA + 2]);
+    const posB = new THREE.Vector3(framesBuffer[pOffsetB + 0], framesBuffer[pOffsetB + 1], framesBuffer[pOffsetB + 2]);
+    const pos = interpolatePosition(posA, velA, posB, velB, playerT, gap);
 
     const boostA = framesBuffer[pOffsetA + 10];
     const boostB = framesBuffer[pOffsetB + 10];
