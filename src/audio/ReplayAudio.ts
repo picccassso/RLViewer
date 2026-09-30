@@ -5,6 +5,10 @@ import { SOUND_LENGTHS, synthesizeSound } from './synthesis';
 
 export type AudioStatus = 'locked' | 'ready' | 'unavailable';
 const MAX_VOICES = 24;
+/** Wall-clock seconds between drawn frames the sound schedule must cover (two at 60 fps). */
+const FRAME_LEAD = 0.034;
+/** Most output latency made up for; beyond this (some Bluetooth headsets) sounds start late. */
+const MAX_LATENCY_LEAD = 0.15;
 
 /** Browser audio lives outside React renders and follows the same clock as the scene. */
 export class ReplayAudio {
@@ -92,21 +96,38 @@ export class ReplayAudio {
     this.cursor.reset(time);
   }
 
+  /**
+   * Plays the sounds due by the next drawn frame. Each one is scheduled ahead on the audio
+   * clock, early by the output latency, so a hit is heard on the frame the ball turns
+   * rather than a frame or two plus the speaker delay after it.
+   */
   public update(time: number, playing: boolean, speed: number, camera: Camera) {
-    const events = this.cursor.advance(time, playing, speed);
+    const latency = this.outputLatency();
+    const events = this.cursor.advance(time + (FRAME_LEAD + latency) * speed, playing, speed);
     if (!playing || document.hidden) { this.stop(); return; }
     if (!this.context || this.context.state !== 'running' || this.muted || this.volume === 0) return;
     this.right.set(1, 0, 0).applyQuaternion(camera.quaternion);
-    for (const event of events) this.play(event, time, speed, camera);
+    for (const event of events) this.play(event, time, speed, camera, latency);
   }
 
-  private play(event: SoundEvent, time: number, speed: number, camera: Camera) {
+  /** Seconds from scheduling a sound to hearing it, as far as the browser reports it. */
+  private outputLatency(): number {
+    const context = this.context;
+    if (!context) return 0;
+    const latency = (context.outputLatency || 0) + (context.baseLatency || 0);
+    return Math.min(Math.max(latency, 0), MAX_LATENCY_LEAD);
+  }
+
+  private play(event: SoundEvent, time: number, speed: number, camera: Camera, latency: number) {
     const context = this.context!;
     const buffers = this.buffers.get(event.kind);
     if (!buffers || !this.master || this.voices.size >= MAX_VOICES) return;
     const buffer = buffers[Math.abs(Math.round(event.time * 1000)) % buffers.length];
-    const age = Math.max(0, time - event.time);
-    if (age >= buffer.duration) return;
+    // Wall-clock wait until the sound should start leaving the speakers; a sound already
+    // under way starts partway through (the buffer plays at `speed`).
+    const delay = (event.time - time) / speed - latency;
+    const offset = Math.max(0, -delay) * speed;
+    if (offset >= buffer.duration) return;
     const dx = event.position.x - camera.position.x;
     const dy = event.position.y - camera.position.y;
     const dz = event.position.z - camera.position.z;
@@ -132,7 +153,7 @@ export class ReplayAudio {
     };
     this.voices.set(source, cleanup);
     source.onended = cleanup;
-    source.start(context.currentTime, age);
+    source.start(context.currentTime + Math.max(0, delay), offset);
   }
 
   public stop() {

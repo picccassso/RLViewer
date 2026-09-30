@@ -14,6 +14,18 @@ import {
 } from '../math/cameraMath';
 import { FrameState } from '../types/replay';
 
+/**
+ * Ball Cam's aim pace (see `springAim`), and the ball distance (uu, along the ground)
+ * inside which it eases down to half that pace. Every hit happens inside that range, so
+ * it is kept small: on the sample match's hard hits the aim is ~15° off the ball 0.1 s
+ * after contact and ~4° by 0.25 s, so the camera follows the ball off the car like a hit
+ * instead of drifting after it (it was ~30° off for ~0.2 s at a quarter pace out to 700 uu).
+ */
+const BALL_CAM_RATE = 14;
+const BALL_CAM_EASE_DISTANCE = 250;
+/** Fastest Ball Cam turns, in degrees per second. */
+const BALL_CAM_MAX_TURN_DEG = 600;
+
 export interface CameraPose {
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;
@@ -115,13 +127,13 @@ export class PovCameraRig {
     const ballCam = computeBallCamAim(carPos, ballPos, heading);
     const targetAim = slerpAim(carAim.clone(), ballCam.aim, ballCamWeight);
 
-    // Car Cam follows the car nearly rigidly. Ball Cam is looser, and slower still
-    // while the ball is close, where its direction swings fastest.
+    // Car Cam follows the car nearly rigidly. Ball Cam is a little looser, and eases off
+    // only with the ball almost on the car, where its direction swings fastest.
     const stiffness = Math.min(Math.max(settings.stiffness ?? 0.45, 0), 1);
     const carRate = 12 + 12 * stiffness;
-    const ballRate = 9 * Math.min(Math.max(ballCam.horizontalDistance / 700, 0.25), 1);
+    const ballRate = BALL_CAM_RATE * Math.min(Math.max(ballCam.horizontalDistance / BALL_CAM_EASE_DISTANCE, 0.5), 1);
     const rate = carRate + (ballRate - carRate) * ballCamWeight;
-    const maxTurnRate = THREE.MathUtils.degToRad(720 + (300 - 720) * ballCamWeight);
+    const maxTurnRate = THREE.MathUtils.degToRad(720 + (BALL_CAM_MAX_TURN_DEG - 720) * ballCamWeight);
 
     // The boom stretches with speed and further while the car is accelerating, so a boost
     // or a dodge pulls the car away from the camera and a hard stop brings it back.

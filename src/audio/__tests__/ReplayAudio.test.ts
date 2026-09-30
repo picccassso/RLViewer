@@ -110,6 +110,20 @@ describe('Audio playback lifecycle', () => {
     expect(context.sources).toHaveLength(2);
   });
 
+  it('schedules sounds ahead to land on their frame, early by the output latency', async () => {
+    const { sound, context, windowTarget, camera } = setup();
+    windowTarget.dispatchEvent(new Event('pointerdown'));
+    await Promise.resolve();
+    (context as any).outputLatency = 0.01;
+    sound.update(0.05, true, 1, camera);
+    sound.update(0.08, true, 1, camera);
+    // The 0.1 s hit is 0.02 s away; leaving 0.01 s for the speakers, it starts in 0.01 s.
+    expect(context.sources).toHaveLength(1);
+    const [when, offset] = context.sources[0].start.mock.calls[0];
+    expect(when).toBeCloseTo(5.01, 6);
+    expect(offset).toBe(0);
+  });
+
   it('handles unavailable browser audio without breaking playback', () => {
     const { sound, windowTarget, camera, status } = setup();
     vi.stubGlobal('AudioContext', undefined);
