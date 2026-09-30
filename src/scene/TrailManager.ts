@@ -11,7 +11,7 @@ import {
 import { Vec3 } from '../math/coords';
 import { getCarExhausts, HITBOX_DIMENSIONS } from './carBodies';
 import { TrailRibbon } from './TrailRibbon';
-import { BoostPlume, ALPHA_BOOST_COLOR } from './BoostPlume';
+import { BoostPlume } from './BoostPlume';
 
 /** How far back the ball's trail reaches, in seconds, if the ball was touched longer ago. */
 export const BALL_TRAIL_SECONDS = 1.5;
@@ -76,7 +76,7 @@ export class TrailManager {
       const exhausts = getCarExhausts(player.car_body_id, player.car_hitbox_family);
       const boost = new BoostPlume(
         (Math.ceil(BOOST_PARTICLE_SECONDS * BOOST_PARTICLES_PER_SECOND) + 2) * exhausts.length,
-        ALPHA_BOOST_COLOR
+        BOOST_PARTICLE_SECONDS
       );
       this.group.add(boost.points);
       this.carTrails.push({ playerIndex: player.index, wheels, exhausts, boost });

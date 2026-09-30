@@ -1,90 +1,116 @@
 import * as THREE from 'three';
 
-/** Iconic Alpha Boost (Gold Rush) golden amber signature color */
-export const ALPHA_BOOST_COLOR = new THREE.Color(0xffa800);
+/** Alpha Boost (Gold Rush) signature gold. */
+export const ALPHA_BOOST_COLOR = new THREE.Color(0xffc21a);
+
+/**
+ * Alpha Boost's plume is mostly a dense stream of fine glittering gold specks in a soft
+ * golden haze, with a few larger gold flakes tumbling out of it. A particle's `variant`
+ * (stable random 0..1) picks which it is:
+ * - below GLITTER_SHARE: a tiny speck that twinkles,
+ * - up to FLAKE_FROM: a soft haze puff that swells and cools to amber smoke,
+ * - above: a flake that spins, flashes as it turns, and falls.
+ */
+const GLITTER_SHARE = '0.66';
+const FLAKE_FROM = '0.97';
 
 const vertexShader = /* glsl */ `
   attribute float life;
   attribute float variant;
   uniform float viewportHeight;
-  uniform vec2 nearFade;
+  uniform float lifeSeconds;
   varying float vLife;
   varying float vAlpha;
   varying float vVariant;
+  varying float vKind;
+  varying float vSpin;
 
   void main() {
-    vec4 view = viewMatrix * vec4(position, 1.0);
+    float age = life * lifeSeconds;
+    float kind = variant < ${GLITTER_SHARE} ? 0.0 : (variant < ${FLAKE_FROM} ? 1.0 : 2.0);
+    // Specks settle a little, flakes fall.
+    float fall = kind == 2.0 ? 325.0 : (kind == 0.0 ? 60.0 : -40.0);
+    vec3 world = position - vec3(0.0, fall * age * age, 0.0);
+    vec4 view = viewMatrix * vec4(world, 1.0);
     float distance = max(-view.z, 1.0);
 
-    bool isEmber = variant > 0.80;
-    // Puffs swell into golden smoke clouds; embers are small sparks.
-    float baseSize = isEmber ? mix(7.0, 14.0, life) : mix(12.0, 38.0, sqrt(life)) * (0.75 + 0.35 * variant);
-    gl_PointSize = min(baseSize * projectionMatrix[1][1] * 0.5 * viewportHeight / distance, 256.0);
+    float size;
+    float alpha;
+    vec2 nearFade;
+    if (kind == 0.0) {
+      size = mix(4.2, 2.4, life) * (0.7 + 0.6 * fract(variant * 37.0));
+      // Twinkle: each speck flickers at its own rate.
+      float twinkle = 0.55 + 0.45 * sin(age * (40.0 + 50.0 * fract(variant * 13.0)) + variant * 60.0);
+      alpha = pow(1.0 - life, 1.1) * twinkle;
+      nearFade = vec2(8.0, 40.0);
+    } else if (kind == 1.0) {
+      size = mix(10.0, 34.0, sqrt(life)) * (0.8 + 0.4 * fract(variant * 7.0));
+      alpha = pow(1.0 - life, 1.4) * 0.6;
+      // Puffs right at the lens would wash the screen gold.
+      nearFade = vec2(40.0, 160.0);
+    } else {
+      size = 2.5 + 1.5 * fract(variant * 29.0);
+      alpha = 1.0 - life * life;
+      nearFade = vec2(60.0, 160.0);
+    }
+    float pixels = size * projectionMatrix[1][1] * 0.5 * viewportHeight / distance;
+    // Far specks stay a visible pixel or two instead of vanishing.
+    gl_PointSize = clamp(pixels, kind == 1.0 ? 0.0 : 1.5, 256.0);
+    // Sub-pixel specks keep their brightness by losing opacity instead of size.
+    alpha *= min(1.0, pixels / 1.5 + 0.35);
     gl_Position = projectionMatrix * view;
 
     vLife = life;
     vVariant = variant;
-    // Gentle fade so overlapping dual streams don't blow out
-    float fade = isEmber
-      ? (1.0 - life) * (0.65 + 0.3 * sin(life * 30.0 + variant * 30.0))
-      : pow(1.0 - life, 1.6) * (0.55 + 0.25 * variant);
-    vAlpha = fade * smoothstep(nearFade.x, nearFade.y, distance);
+    vKind = kind;
+    vSpin = variant * 6.2832 + age * (8.0 + 10.0 * fract(variant * 17.0));
+    vAlpha = alpha * smoothstep(nearFade.x, nearFade.y, distance);
   }
 `;
 
 const fragmentShader = /* glsl */ `
-  uniform vec3 color;
   varying float vLife;
   varying float vAlpha;
   varying float vVariant;
+  varying float vKind;
+  varying float vSpin;
 
   void main() {
-    vec2 fromCentre = gl_PointCoord * 2.0 - 1.0;
-    bool isEmber = vVariant > 0.80;
-
-    // Organic cloud lobe distortion for smoky puffs; crisp circular for sparkling embers
-    float dist;
-    if (isEmber) {
-      dist = length(fromCentre);
-    } else {
-      float angle = atan(fromCentre.y, fromCentre.x);
-      float lobe = 1.0 + 0.10 * sin(angle * 3.0 + vVariant * 6.28) + 0.06 * cos(angle * 5.0 - vVariant * 3.14);
-      dist = length(fromCentre) * lobe;
-    }
-    if (dist > 1.0) discard;
-
-    float soft = (1.0 - dist) * (1.0 - dist);
-
-    // Alpha Boost (Gold Rush) multi-stage thermal color grading:
-    // 1. Warm gold-white at the nozzle
-    vec3 whiteHot = vec3(1.0, 0.94, 0.82);
-    // 2. Radiant intense pure gold
-    vec3 radiantGold = vec3(1.0, 0.72, 0.08);
-    // 3. Fiery rich amber-orange
-    vec3 fireAmber = vec3(1.0, 0.40, 0.03);
-    // 4. Deep warm smoky russet
-    vec3 smokeRusset = vec3(0.48, 0.16, 0.02);
-
+    vec2 p = gl_PointCoord * 2.0 - 1.0;
+    vec3 whiteGold = vec3(1.0, 0.95, 0.75);
+    vec3 gold = vec3(1.0, 0.76, 0.12);
+    vec3 amber = vec3(1.0, 0.48, 0.05);
+    vec3 smoke = vec3(0.42, 0.2, 0.05);
     vec3 rgb;
-    if (vLife < 0.22) {
-      rgb = mix(whiteHot, radiantGold, smoothstep(0.0, 0.22, vLife));
-    } else if (vLife < 0.60) {
-      rgb = mix(radiantGold, fireAmber, smoothstep(0.22, 0.60, vLife));
+    float shape;
+
+    if (vKind == 0.0) {
+      // Glitter: a hot pinpoint with a small glow, white-gold out of the nozzle.
+      float r = length(p);
+      if (r > 1.0) discard;
+      shape = exp(-r * r * 6.0);
+      rgb = mix(whiteGold, gold, smoothstep(0.0, 0.45, vLife)) * 3.2;
+    } else if (vKind == 1.0) {
+      // Haze: soft golden billows cooling to amber, then brown smoke.
+      float angle = atan(p.y, p.x);
+      float r = length(p) * (1.0 + 0.1 * sin(angle * 3.0 + vVariant * 6.28) + 0.06 * cos(angle * 5.0 - vVariant * 3.14));
+      if (r > 1.0) discard;
+      shape = (1.0 - r) * (1.0 - r) * 0.28;
+      rgb = vLife < 0.4 ? mix(gold * 1.6, amber, smoothstep(0.0, 0.4, vLife)) : mix(amber, smoke, smoothstep(0.4, 1.0, vLife));
     } else {
-      rgb = mix(fireAmber, smokeRusset, smoothstep(0.60, 1.0, vLife));
+      // Flake: a spinning square of gold leaf that flashes when it faces the camera.
+      float c = cos(vSpin);
+      float s = sin(vSpin);
+      vec2 q = vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+      float squash = 0.35 + 0.65 * abs(sin(vSpin * 0.7));
+      q.y /= squash;
+      if (max(abs(q.x), abs(q.y)) > 0.7) discard;
+      shape = 1.0;
+      float flash = pow(abs(cos(vSpin * 0.7)), 6.0);
+      rgb = mix(gold * 1.2, whiteGold * 4.0, flash);
     }
 
-    if (isEmber) {
-      // Golden ember sparks: glittering with gentle bloom
-      rgb = mix(radiantGold * 1.6, whiteHot * 2.2, 1.0 - vLife);
-      gl_FragColor = vec4(rgb, vAlpha * soft * 0.42);
-    } else {
-      // Soft voluminous billowing golden puffs: mild bloom at nozzle, settling to warm natural gold
-      float bloomMult = mix(1.7, 1.0, smoothstep(0.0, 0.35, vLife));
-      rgb *= bloomMult;
-      gl_FragColor = vec4(rgb, vAlpha * soft * 0.30);
-    }
-
+    gl_FragColor = vec4(rgb, vAlpha * shape);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
@@ -93,8 +119,8 @@ const fragmentShader = /* glsl */ `
 const viewport = new THREE.Vector4();
 
 /**
- * A car's boost plume: glowing puffs in world space, so at speed they stream back past
- * the camera. Refilled every frame from `push`, like `TrailRibbon`.
+ * A car's Alpha Boost plume: gold glitter, haze and flakes in world space, so at speed
+ * they stream back past the camera. Refilled every frame from `push`, like `TrailRibbon`.
  */
 export class BoostPlume {
   readonly points: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>;
@@ -104,7 +130,7 @@ export class BoostPlume {
   private readonly variants: Float32Array;
   private count = 0;
 
-  constructor(maxParticles: number, color: THREE.Color = ALPHA_BOOST_COLOR) {
+  constructor(maxParticles: number, lifeSeconds: number) {
     this.maxParticles = maxParticles;
     this.positions = new Float32Array(maxParticles * 3);
     this.lives = new Float32Array(maxParticles);
@@ -120,9 +146,8 @@ export class BoostPlume {
       vertexShader,
       fragmentShader,
       uniforms: {
-        color: { value: color.clone() },
         viewportHeight: { value: 1080 },
-        nearFade: { value: new THREE.Vector2(40, 180) },
+        lifeSeconds: { value: lifeSeconds },
       },
       transparent: true,
       depthWrite: false,

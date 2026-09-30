@@ -18,6 +18,7 @@ import {
   nextSupersonic,
   sampleBallTrail,
   sampleBoostPlume,
+  BOOST_PARTICLES_PER_SECOND,
   sampleCarWheelTrail,
   SUPERSONIC_FLAG,
 } from '../trails';
@@ -345,26 +346,28 @@ describe('Boost plume', () => {
 
   it('streams out behind a boosting car on a fixed clock', () => {
     const particles = sample(25.5 * FRAME_SECONDS);
-    // 0.4 s at 200 a second, plus one fading out at exactly 0.4 s
-    expect(particles.length).toBeGreaterThanOrEqual(80);
-    expect(particles.length).toBeLessThanOrEqual(81);
+    // 0.4 s at the spawn rate, plus one fading out at exactly 0.4 s
+    const expected = 0.4 * BOOST_PARTICLES_PER_SECOND;
+    expect(particles.length).toBeGreaterThanOrEqual(expected - 1);
+    expect(particles.length).toBeLessThanOrEqual(expected + 1);
     for (let i = 1; i < particles.length; i++) {
       expect(particles[i].age).toBeGreaterThan(particles[i - 1].age);
-      expect(particles[i].age - particles[i - 1].age).toBeCloseTo(1 / 200, 6);
+      expect(particles[i].age - particles[i - 1].age).toBeCloseTo(1 / BOOST_PARTICLES_PER_SECOND, 6);
     }
     // The newest particle is at the exhaust, the oldest hangs far behind the car.
     const carX = 25.5 * 2300 * FRAME_SECONDS;
     expect(particles[0].x).toBeGreaterThan(carX - 59 - 20);
-    expect(particles.at(-1)!.x).toBeLessThan(carX - 800);
+    expect(particles.at(-1)!.x).toBeLessThan(carX - 500);
     for (const p of particles) expect(p.variant).toBeGreaterThanOrEqual(0);
   });
 
   it('leaves each particle where it was, whenever it is drawn', () => {
-    const early = sample(20 * FRAME_SECONDS);
-    const late = sample(20 * FRAME_SECONDS + 1 / 200);
+    // Half a spawn off the spawn clock, so rounding never decides which particle is newest.
+    const early = sample(20 * FRAME_SECONDS + 0.5 / BOOST_PARTICLES_PER_SECOND);
+    const late = sample(20 * FRAME_SECONDS + 1.5 / BOOST_PARTICLES_PER_SECOND);
     // Same particle one spawn later: one step older, moved by its own drift only.
     const drifted = late[1];
-    expect(drifted.age).toBeCloseTo(early[0].age + 1 / 200, 6);
+    expect(drifted.age).toBeCloseTo(early[0].age + 1 / BOOST_PARTICLES_PER_SECOND, 6);
     expect(Math.hypot(drifted.x - early[0].x, drifted.y - early[0].y, drifted.z - early[0].z)).toBeLessThan(10);
     expect(drifted.variant).toBe(early[0].variant);
   });
@@ -405,7 +408,7 @@ describe('Boost plume', () => {
     });
 
     // Dual exhausts emit twice as many particles as a single exhaust
-    expect(particles.length).toBeGreaterThanOrEqual(160);
+    expect(particles.length).toBeGreaterThanOrEqual(2 * 0.4 * BOOST_PARTICLES_PER_SECOND - 2);
 
     // Initial particles near the car are clearly separated laterally around the exhausts
     const newestLeft = particles.find((p) => p.z < 0)!;

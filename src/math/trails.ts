@@ -271,17 +271,19 @@ export function sampleCarWheelTrail(
 }
 
 /** Boost particles leave the exhaust on a fixed clock, so the plume never shimmers between redraws. */
-export const BOOST_PARTICLES_PER_SECOND = 200;
+export const BOOST_PARTICLES_PER_SECOND = 540;
 /** How long a boost particle lives. */
-export const BOOST_PARTICLE_SECONDS = 0.4;
+export const BOOST_PARTICLE_SECONDS = 0.5;
 /**
  * Share of the car's velocity a boost particle keeps. The rest of the plume hangs where it
- * was blown out, so at supersonic it streams back ~900 uu behind the car.
+ * was blown out, so at supersonic it streams back ~800 uu behind the car, and from the
+ * player's camera the stream reaches back to (and past) the lens instead of vanishing
+ * a few car lengths behind.
  */
-const BOOST_CARRY = 0.1;
+const BOOST_CARRY = 0.4;
 /** Speed particles are blown out of the exhaust, and how far they scatter sideways. */
-const BOOST_EJECT_SPEED = 350; // uu/s
-const BOOST_SPREAD_SPEED = 80; // uu/s
+const BOOST_EJECT_SPEED = 300; // uu/s
+const BOOST_SPREAD_SPEED = 110; // uu/s
 /** Flag bit set on a player's frame while the car is boosting. */
 const BOOST_FLAG = 8;
 

@@ -6,6 +6,7 @@ import { PlayerInfo, FrameState, ParsedReplayData } from '../types/replay';
 import { carModelFor, getCarExhausts, HITBOX_DIMENSIONS } from './carBodies';
 import { SUPERSONIC_SPEED_THRESHOLD } from '../math/cameraMath';
 import { buildWheelTravel, sampleWheelTravel } from '../math/wheelRotation';
+import { ALPHA_BOOST_COLOR } from './BoostPlume';
 
 export { HITBOX_DIMENSIONS };
 
@@ -67,29 +68,42 @@ export function applyTeamPaint(mat: THREE.MeshStandardMaterial, team: 0 | 1) {
   mat.customProgramCacheKey = () => 'team-paint';
 }
 
+/**
+ * One exhaust's Alpha Boost flame: a white-gold glow on the nozzle, as wide as the exhaust
+ * and brighter than white so it blooms, and a short gold jet with a white-hot core.
+ */
 function createFlameJet(_team?: 0 | 1): THREE.Group {
   const jet = new THREE.Group();
-  // Alpha Boost (Gold Rush) flame jet layers:
-  // 1. Outer warm amber-gold flame
-  // 2. Inner bright golden core
+  const additive = (color: THREE.Color, opacity: number) => new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+
   const flameLayers: Array<[radius: number, length: number, color: THREE.Color, opacity: number]> = [
-    [6.0, 52, new THREE.Color(0xff8800).multiplyScalar(1.6), 0.45],
-    [3.2, 34, new THREE.Color(1.0, 0.90, 0.65).multiplyScalar(2.4), 0.65],
+    [7.5, 48, ALPHA_BOOST_COLOR.clone().multiplyScalar(2.0), 0.4],
+    [3.8, 30, new THREE.Color(1.0, 0.93, 0.7).multiplyScalar(3.0), 0.7],
   ];
   for (const [radius, length, color, opacity] of flameLayers) {
     const geometry = new THREE.ConeGeometry(radius, length, 16, 1, true);
     // Point the tip backwards and put the base at the jet's origin.
     geometry.rotateZ(Math.PI / 2);
     geometry.translate(-length / 2, 0, 0);
-    const layer = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    }));
-    jet.add(layer);
+    jet.add(new THREE.Mesh(geometry, additive(color, opacity)));
+  }
+
+  // Nozzle glow: a soft gold halo around a white-gold core, just behind the exhaust.
+  const glowLayers: Array<[radius: number, color: THREE.Color, opacity: number]> = [
+    [11, ALPHA_BOOST_COLOR.clone().multiplyScalar(1.6), 0.3],
+    [6, new THREE.Color(1.0, 0.95, 0.78).multiplyScalar(3.2), 0.75],
+  ];
+  for (const [radius, color, opacity] of glowLayers) {
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(radius, 16, 12), additive(color, opacity));
+    glow.position.x = -4;
+    jet.add(glow);
   }
   return jet;
 }
@@ -219,8 +233,8 @@ export class CarManager {
       hitboxWireframe.visible = false;
       carGroup.add(hitboxWireframe);
 
-      // Boost flame behind the car (-X is rear): team-coloured cones around white-hot
-      // cores shooting from the car's dual exhausts, brighter than white to bloom.
+      // Boost flame behind the car (-X is rear): an Alpha Boost gold jet and nozzle glow
+      // on each of the car's exhausts, brighter than white to bloom.
       const boostFlame = new THREE.Group();
       const exhausts = getCarExhausts(player.car_body_id, player.car_hitbox_family);
       for (const exhaust of exhausts) {
