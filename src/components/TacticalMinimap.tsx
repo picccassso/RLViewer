@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Map, ChevronDown, ChevronUp } from 'lucide-react';
+import { Map, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { FrameState, PlayerInfo } from '../types/replay';
 import { FIELD_WIDTH, FIELD_LENGTH } from '../scene/StadiumManager';
 
@@ -19,6 +19,8 @@ interface TacticalMinimapProps {
   activePlayerIndex: number;
   onSelectPlayer: (index: number) => void;
   defaultCollapsed?: boolean;
+  /** Show a close button that calls this instead of collapsing the map in place. */
+  onClose?: () => void;
 }
 
 export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
@@ -26,6 +28,7 @@ export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
   activePlayerIndex,
   onSelectPlayer,
   defaultCollapsed,
+  onClose,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     if (typeof defaultCollapsed === 'boolean') return defaultCollapsed;
@@ -203,12 +206,12 @@ export const TacticalMinimap: React.FC<TacticalMinimapProps> = ({
         <span className="hud-label">Map</span>
         <button
           type="button"
-          onClick={() => setIsCollapsed(true)}
+          onClick={onClose ?? (() => setIsCollapsed(true))}
           className="hud-btn h-5 w-5 rounded text-slate-500"
-          title="Minimize Map"
-          aria-label="Minimize Map"
+          title={onClose ? 'Close Map' : 'Minimize Map'}
+          aria-label={onClose ? 'Close Map' : 'Minimize Map'}
         >
-          <ChevronDown size={13} />
+          {onClose ? <X size={13} /> : <ChevronDown size={13} />}
         </button>
       </div>
       <canvas

@@ -227,6 +227,14 @@ body {
   }
 }
 
+/* Phones in landscape: smaller nameplates so they crowd the view less. */
+@media (max-height: 560px) {
+  .nameplate {
+    padding: 1px 6px 3px;
+    font-size: 12px;
+  }
+}
+
 /* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
