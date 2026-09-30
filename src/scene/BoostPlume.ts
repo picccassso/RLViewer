@@ -1,8 +1,5 @@
 import * as THREE from 'three';
 
-/** Alpha Boost (Gold Rush) signature gold. */
-export const ALPHA_BOOST_COLOR = new THREE.Color(0xffc21a);
-
 /**
  * Alpha Boost's plume is mostly a dense stream of fine glittering gold specks in a soft
  * golden haze, with a few larger gold flakes tumbling out of it. A particle's `variant`
@@ -77,26 +74,29 @@ const fragmentShader = /* glsl */ `
 
   void main() {
     vec2 p = gl_PointCoord * 2.0 - 1.0;
-    vec3 whiteGold = vec3(1.0, 0.95, 0.75);
-    vec3 gold = vec3(1.0, 0.76, 0.12);
-    vec3 amber = vec3(1.0, 0.48, 0.05);
-    vec3 smoke = vec3(0.42, 0.2, 0.05);
+    // Alpha Boost gold in linear light, picked through the ACES tone curve, which bleaches
+    // bright colours towards white: hot shows as #f4e3a0, gold #f1cc5b, amber #ea982a.
+    // A brighter or yellower gold comes out white (3x pale yellow shows as #f8f7f5).
+    vec3 hot = vec3(1.0, 0.55, 0.08) * 1.8;
+    vec3 gold = vec3(1.0, 0.42, 0.02) * 1.3;
+    vec3 amber = vec3(1.0, 0.25, 0.01) * 0.9;
+    vec3 smoke = vec3(0.3, 0.1, 0.02);
     vec3 rgb;
     float shape;
 
     if (vKind == 0.0) {
-      // Glitter: a hot pinpoint with a small glow, white-gold out of the nozzle.
+      // Glitter: a gold pinpoint with a small glow, hotter out of the nozzle.
       float r = length(p);
       if (r > 1.0) discard;
       shape = exp(-r * r * 6.0);
-      rgb = mix(whiteGold, gold, smoothstep(0.0, 0.45, vLife)) * 3.2;
+      rgb = mix(hot, gold, smoothstep(0.0, 0.3, vLife));
     } else if (vKind == 1.0) {
       // Haze: soft golden billows cooling to amber, then brown smoke.
       float angle = atan(p.y, p.x);
       float r = length(p) * (1.0 + 0.1 * sin(angle * 3.0 + vVariant * 6.28) + 0.06 * cos(angle * 5.0 - vVariant * 3.14));
       if (r > 1.0) discard;
       shape = (1.0 - r) * (1.0 - r) * 0.28;
-      rgb = vLife < 0.4 ? mix(gold * 1.6, amber, smoothstep(0.0, 0.4, vLife)) : mix(amber, smoke, smoothstep(0.4, 1.0, vLife));
+      rgb = vLife < 0.4 ? mix(gold, amber, smoothstep(0.0, 0.4, vLife)) : mix(amber, smoke, smoothstep(0.4, 1.0, vLife));
     } else {
       // Flake: a spinning square of gold leaf that flashes when it faces the camera.
       float c = cos(vSpin);
@@ -107,7 +107,7 @@ const fragmentShader = /* glsl */ `
       if (max(abs(q.x), abs(q.y)) > 0.7) discard;
       shape = 1.0;
       float flash = pow(abs(cos(vSpin * 0.7)), 6.0);
-      rgb = mix(gold * 1.2, whiteGold * 4.0, flash);
+      rgb = mix(gold, hot * 1.3, flash);
     }
 
     gl_FragColor = vec4(rgb, vAlpha * shape);

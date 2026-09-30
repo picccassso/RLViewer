@@ -6,7 +6,6 @@ import { PlayerInfo, FrameState, ParsedReplayData } from '../types/replay';
 import { carModelFor, getCarExhausts, HITBOX_DIMENSIONS } from './carBodies';
 import { SUPERSONIC_SPEED_THRESHOLD } from '../math/cameraMath';
 import { buildWheelTravel, sampleWheelTravel } from '../math/wheelRotation';
-import { ALPHA_BOOST_COLOR } from './BoostPlume';
 
 export { HITBOX_DIMENSIONS };
 
@@ -69,8 +68,9 @@ export function applyTeamPaint(mat: THREE.MeshStandardMaterial, team: 0 | 1) {
 }
 
 /**
- * One exhaust's Alpha Boost flame: a white-gold glow on the nozzle, as wide as the exhaust
- * and brighter than white so it blooms, and a short gold jet with a white-hot core.
+ * One exhaust's Alpha Boost flame: a gold glow on the nozzle, as wide as the exhaust and
+ * bright enough to bloom, and a short gold jet. The layers add up to a pale-gold centre
+ * (#fceaa0 after tone mapping) inside solid gold (#efc248), rather than white.
  */
 function createFlameJet(_team?: 0 | 1): THREE.Group {
   const jet = new THREE.Group();
@@ -84,8 +84,8 @@ function createFlameJet(_team?: 0 | 1): THREE.Group {
   });
 
   const flameLayers: Array<[radius: number, length: number, color: THREE.Color, opacity: number]> = [
-    [7.5, 48, ALPHA_BOOST_COLOR.clone().multiplyScalar(2.0), 0.4],
-    [3.8, 30, new THREE.Color(1.0, 0.93, 0.7).multiplyScalar(3.0), 0.7],
+    [7.5, 48, new THREE.Color(1.0, 0.38, 0.01).multiplyScalar(1.3), 0.45],
+    [3.8, 30, new THREE.Color(1.0, 0.45, 0.03).multiplyScalar(1.4), 0.6],
   ];
   for (const [radius, length, color, opacity] of flameLayers) {
     const geometry = new THREE.ConeGeometry(radius, length, 16, 1, true);
@@ -95,10 +95,10 @@ function createFlameJet(_team?: 0 | 1): THREE.Group {
     jet.add(new THREE.Mesh(geometry, additive(color, opacity)));
   }
 
-  // Nozzle glow: a soft gold halo around a white-gold core, just behind the exhaust.
+  // Nozzle glow: a soft gold halo around a hotter gold core, just behind the exhaust.
   const glowLayers: Array<[radius: number, color: THREE.Color, opacity: number]> = [
-    [11, ALPHA_BOOST_COLOR.clone().multiplyScalar(1.6), 0.3],
-    [6, new THREE.Color(1.0, 0.95, 0.78).multiplyScalar(3.2), 0.75],
+    [11, new THREE.Color(1.0, 0.38, 0.01).multiplyScalar(1.2), 0.5],
+    [6, new THREE.Color(1.0, 0.45, 0.03).multiplyScalar(1.2), 0.8],
   ];
   for (const [radius, color, opacity] of glowLayers) {
     const glow = new THREE.Mesh(new THREE.SphereGeometry(radius, 16, 12), additive(color, opacity));
