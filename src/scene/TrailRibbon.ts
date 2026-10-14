@@ -39,9 +39,10 @@ const fragmentShader = /* glsl */ `
 
   void main() {
     float fromCentre = abs(vSide);
-    float edge = 1.0 - smoothstep(0.4, 1.0, fromCentre);
-    // A hotter, whiter core keeps the trail readable against any background.
-    vec3 rgb = mix(color, vec3(1.0), 0.35 * (1.0 - fromCentre)) * intensity;
+    float edge = 1.0 - smoothstep(0.32, 1.0, fromCentre);
+    float core = exp(-fromCentre * fromCentre * 7.5);
+    // A hotter, whiter plasma core keeps the trail readable against any background.
+    vec3 rgb = mix(color, vec3(1.0), 0.5 * core) * intensity * (0.92 + 0.32 * core);
     gl_FragColor = vec4(rgb, vAlpha * edge);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>

@@ -2,8 +2,17 @@ import React, { useState, useRef, useEffect } from 'react';
 import { UploadCloud, FileCode, Play, Loader2, Eye, EyeOff } from 'lucide-react';
 import { RLViewerLogo } from './RLViewerLogo';
 
-/** How long the show-interface button stays up after the mouse stops moving. */
+/** How long the floating HUD-stage button stays visible after the mouse stops moving. */
 const REVEAL_IDLE_MS = 2500;
+
+export type HudStage = 'full' | 'match' | 'names' | 'none';
+
+const HUD_STAGE_LABELS: Record<HudStage, string> = {
+  full: 'Full HUD',
+  match: 'Match HUD',
+  names: 'Names Only',
+  none: 'HUD Off',
+};
 
 interface DropZoneOverlayProps {
   isLoading: boolean;
@@ -13,10 +22,10 @@ interface DropZoneOverlayProps {
   showControls: boolean;
   /** Nothing is open yet: ask for a replay. */
   showStartPrompt: boolean;
-  onHideHud: () => void;
-  /** Offer a way back while the interface is hidden. */
+  hudStage: HudStage;
+  onCycleHudStage: () => void;
+  /** Offer a floating button to keep cycling/restoring the HUD when replay controls are hidden. */
   showRevealButton: boolean;
-  onShowHud: () => void;
   fileInputRef?: React.RefObject<HTMLInputElement>;
 }
 
@@ -27,9 +36,9 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
   onLoadSample,
   showControls,
   showStartPrompt,
-  onHideHud,
+  hudStage,
+  onCycleHudStage,
   showRevealButton,
-  onShowHud,
   fileInputRef: externalFileInputRef,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -163,53 +172,31 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
 
       {/* Start screen: nothing is open yet */}
       {showStartPrompt && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center p-4 text-white pointer-events-auto overflow-hidden">
-          {/* Backdrop: team glows over a faint pitch grid */}
-          <div
-            className="absolute inset-0 -z-10"
-            style={{
-              background:
-                'radial-gradient(ellipse 60% 70% at 0% 50%, rgb(22 114 232 / 0.28), transparent 70%),' +
-                'radial-gradient(ellipse 60% 70% at 100% 50%, rgb(240 106 15 / 0.24), transparent 70%),' +
-                'radial-gradient(ellipse 50% 50% at 50% 50%, rgb(34 211 238 / 0.06), transparent 70%),' +
-                '#05070f',
-            }}
-          />
-          <div
-            className="absolute inset-0 -z-10 opacity-[0.35]"
-            style={{
-              backgroundImage:
-                'linear-gradient(rgb(255 255 255 / 0.04) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.04) 1px, transparent 1px)',
-              backgroundSize: '48px 48px',
-              maskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black, transparent)',
-              WebkitMaskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black, transparent)',
-            }}
-          />
-
-          <div className="hud-panel rounded-2xl w-full max-w-md p-6 sm:p-8 text-center max-h-[92dvh] overflow-y-auto">
+        <div className="fixed inset-0 z-30 flex items-center justify-center p-4 text-white pointer-events-auto overflow-hidden bg-[#080b12]">
+          <div className="hud-panel rounded-lg w-full max-w-md p-6 sm:p-7 text-center max-h-[92dvh] overflow-y-auto">
             <div className="flex justify-center">
-              <RLViewerLogo size={56} />
+              <RLViewerLogo size={48} />
             </div>
-            <h1 className="mt-3 font-display text-3xl font-bold tracking-tight">
-              RL<span className="text-cyan-300">Viewer</span>
+            <h1 className="mt-3 font-display text-2xl font-bold tracking-tight text-white">
+              RLViewer
             </h1>
-            <p className="mt-1.5 text-[15px] text-slate-400 leading-snug">
+            <p className="mt-1 text-[14px] text-slate-400 leading-snug">
               Watch any Rocket League replay in 3D, from any player's camera.
             </p>
 
-            <div className="mt-6 flex flex-col gap-2.5">
+            <div className="mt-5 flex flex-col gap-2">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-cyan-300 to-cyan-500 font-display text-[15px] font-bold text-slate-950 shadow-[0_6px_20px_-6px_rgb(34_211_238/0.7)] transition hover:brightness-110 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                className="flex h-10 items-center justify-center gap-2 rounded bg-[#1968cc] font-display text-[14px] font-bold text-white transition-colors hover:bg-[#1e74e0] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/60"
               >
-                <FileCode size={17} />
+                <FileCode size={16} />
                 <span>Choose replay file</span>
               </button>
               <button
                 onClick={onLoadSample}
-                className="hud-btn h-11 rounded-xl bg-white/[0.06] text-[15px] text-slate-200 ring-1 ring-inset ring-white/10 hover:bg-white/10"
+                className="hud-btn h-10 rounded bg-white/[0.07] text-[14px] text-slate-200 border border-white/10 hover:bg-white/12"
               >
-                <Play size={15} />
+                <Play size={14} />
                 <span>Watch sample match</span>
               </button>
             </div>
@@ -220,21 +207,21 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
               <div className="h-px flex-1 bg-white/10" />
             </div>
 
-            <div className="mt-5 rounded-lg bg-black/30 px-3 py-2.5 text-left ring-1 ring-inset ring-white/5">
+            <div className="mt-4 rounded bg-black/35 px-3 py-2 text-left border border-white/5">
               <div className="hud-label text-[10px] text-slate-500">Replays are saved in</div>
-              <code className="mt-1.5 block break-all font-mono text-[11px] leading-relaxed text-slate-300">
+              <code className="mt-1 block break-all font-mono text-[11px] leading-relaxed text-slate-300">
                 Documents\My Games\Rocket League\TAGame\Demos
               </code>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[12px] text-slate-500">
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[12px] text-slate-400">
               <span className="flex items-center gap-1.5"><kbd className="hud-kbd">Space</kbd> Ball cam</span>
               <span className="flex items-center gap-1.5"><kbd className="hud-kbd">K</kbd> Play</span>
               <span className="flex items-center gap-1.5"><kbd className="hud-kbd">1</kbd>–<kbd className="hud-kbd">6</kbd> Players</span>
-              <span className="flex items-center gap-1.5"><kbd className="hud-kbd">H</kbd> Hide UI</span>
+              <span className="flex items-center gap-1.5"><kbd className="hud-kbd">H</kbd> Cycle HUD</span>
             </div>
 
-            <p className="mt-4 text-[11px] text-slate-600">Parsed 100% locally. Nothing is uploaded.</p>
+            <p className="mt-3 text-[11px] text-slate-500">Parsed 100% locally. Nothing is uploaded.</p>
           </div>
         </div>
       )}
@@ -259,50 +246,52 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
         >
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="hud-btn h-8 px-2.5 text-[13px]"
+            className="hud-btn h-7 px-2.5 text-[12px]"
             title="Open a .replay file"
           >
-            <FileCode size={14} />
+            <FileCode size={13} />
             <span>Open</span>
           </button>
 
           <button
             onClick={onLoadSample}
-            className="hud-btn h-8 px-2.5 text-[13px]"
+            className="hud-btn h-7 px-2.5 text-[12px]"
             title="Load sample match"
           >
-            <Play size={13} />
+            <Play size={12} />
             <span>Sample</span>
           </button>
 
-          <div className="h-5 w-px bg-white/10 mx-0.5" />
+          <div className="h-4 w-px bg-white/10 mx-0.5" />
           <button
-            onClick={onHideHud}
-            className="hud-btn h-8 w-8"
-            title="Hide interface (H)"
-            aria-label="Hide interface"
+            onClick={onCycleHudStage}
+            className="hud-btn h-7 px-2 text-[12px]"
+            title="Cycle HUD elements (H): Full -> Match HUD -> Names Only -> Off"
+            aria-label="Cycle HUD elements"
           >
-            <EyeOff size={14} />
+            <Eye size={13} />
+            <span>{HUD_STAGE_LABELS[hudStage]}</span>
+            <kbd className="hud-kbd ml-0.5">H</kbd>
           </button>
         </div>
       )}
 
       {showRevealButton && (
         <button
-          onClick={onShowHud}
+          onClick={onCycleHudStage}
           onMouseEnter={() => { revealHoveredRef.current = true; }}
           onMouseLeave={() => { revealHoveredRef.current = false; }}
-          className={`fixed z-30 hud-panel hud-btn h-9 px-3 text-[13px] transition-opacity duration-300 ${
+          className={`fixed z-30 hud-panel hud-btn h-8 px-2.5 text-[12px] transition-opacity duration-200 ${
             isRevealAwake ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
           style={{
             top: 'max(12px, env(safe-area-inset-top))',
             right: 'max(12px, env(safe-area-inset-right))',
           }}
-          title="Show interface (H)"
+          title="Cycle HUD elements (H): Full -> Match HUD -> Names Only -> Off"
         >
-          <Eye size={14} />
-          <span>Show interface</span>
+          {hudStage === 'none' ? <EyeOff size={13} /> : <Eye size={13} />}
+          <span>{HUD_STAGE_LABELS[hudStage]}</span>
           <kbd className="hud-kbd ml-0.5">H</kbd>
         </button>
       )}

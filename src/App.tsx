@@ -4,13 +4,14 @@ import { parseReplayBuffer, loadSampleReplay } from './parser/replayParser';
 import { CameraMode } from './camera/CameraSuite';
 import { CameraSettings, DEFAULT_CAMERA_SETTINGS } from './math/cameraMath';
 import { getFrameTime } from './math/frameUnpacker';
+import { resolveGoalScoredTime } from './math/impacts';
 import { ReplayVisualizerCanvas } from './scene/ReplayVisualizerCanvas';
 import { Scoreboard } from './components/Scoreboard';
 import { PlayerTelemetry } from './components/PlayerTelemetry';
 import { TacticalMinimap } from './components/TacticalMinimap';
 import { CameraToolbar } from './components/CameraToolbar';
 import { PlaybackTimeline } from './components/PlaybackTimeline';
-import { DropZoneOverlay } from './components/DropZoneOverlay';
+import { DropZoneOverlay, HudStage } from './components/DropZoneOverlay';
 import { RLViewerLogo } from './components/RLViewerLogo';
 import { OrientationLockOverlay } from './components/OrientationLockOverlay';
 import { MobileSpectatorHUD } from './components/mobile/MobileSpectatorHUD';
@@ -50,9 +51,17 @@ export const App: React.FC = () => {
   // only used after the viewer explicitly presses the Ball Cam toggle.
   const [ballCamOverride, setBallCamOverride] = useState<boolean | null>(null);
   const [cameraSettings, setCameraSettings] = useState<CameraSettings>(DEFAULT_CAMERA_SETTINGS);
-  const [isHudVisible, setIsHudVisible] = useState<boolean>(true);
+  const [hudStage, setHudStage] = useState<HudStage>('full');
   const { showRotatePrompt, isCompactMobile, isFullscreen, toggleFullscreen } = useDeviceOrientation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCycleHudStage = useCallback(() => {
+    setHudStage((stage) =>
+      stage === 'full' ? 'match' :
+      stage === 'match' ? 'names' :
+      stage === 'names' ? 'none' : 'full'
+    );
+  }, []);
 
   const handleToggleMute = useCallback(() => {
     setAudioSettings((settings) => ({
@@ -69,9 +78,9 @@ export const App: React.FC = () => {
   useEffect(() => {
     const handleHudShortcut = (event: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((event.target as HTMLElement)?.tagName)) return;
-      if (event.code === 'KeyH') {
+      if (event.code === 'KeyH' && !event.repeat) {
         event.preventDefault();
-        setIsHudVisible((visible) => !visible);
+        handleCycleHudStage();
       } else if (event.code === 'KeyM' && !event.repeat) {
         event.preventDefault();
         setAudioSettings((settings) => ({ ...settings, muted: !settings.muted }));
@@ -79,7 +88,7 @@ export const App: React.FC = () => {
     };
     window.addEventListener('keydown', handleHudShortcut);
     return () => window.removeEventListener('keydown', handleHudShortcut);
-  }, []);
+  }, [handleCycleHudStage]);
 
   // Handle uploaded replay file
   const handleFileLoaded = async (buffer: ArrayBuffer, fileName: string) => {
@@ -199,19 +208,41 @@ export const App: React.FC = () => {
     [replayData, currentFrame]
   );
 
+  // Precompute the exact moment each goal crosses the goal line into the net
+  // (timeline tick marks sit ~1.5-2s earlier so clicking them shows the shot buildup).
+  const resolvedGoals = React.useMemo(() => {
+    if (!replayData) return [];
+    return replayData.tickMarks
+      .filter((tm) => tm.type === 'goal')
+      .map((tm) => ({
+        ...tm,
+        scoredTime: resolveGoalScoredTime(replayData, tm.time),
+      }));
+  }, [replayData]);
+
   // Live running match score based on goals scored at or before currentTime
   const liveTeamScores = React.useMemo(() => {
-    if (!replayData) return { team0: 0, team1: 0 };
     let team0 = 0;
     let team1 = 0;
-    for (const tm of replayData.tickMarks) {
-      if (tm.type === 'goal' && tm.time <= currentTime) {
-        if (tm.team === 0) team0++;
+    for (const g of resolvedGoals) {
+      if (g.scoredTime <= currentTime) {
+        if (g.team === 0) team0++;
         else team1++;
       }
     }
     return { team0, team1 };
-  }, [replayData, currentTime]);
+  }, [resolvedGoals, currentTime]);
+
+  // Active goal celebration banner (shown for 3 seconds right when the ball enters the net)
+  const activeGoal = React.useMemo(() => {
+    for (let i = resolvedGoals.length - 1; i >= 0; i--) {
+      const g = resolvedGoals[i];
+      if (currentTime >= g.scoredTime && currentTime <= g.scoredTime + 3.0) {
+        return { description: g.description, team: g.team, time: g.scoredTime };
+      }
+    }
+    return null;
+  }, [resolvedGoals, currentTime]);
 
   return (
     <div className="fixed inset-0 w-full h-full h-[100dvh] overflow-hidden bg-[#060913] select-none">
@@ -229,7 +260,7 @@ export const App: React.FC = () => {
         ballCamOverride={ballCamOverride}
         cameraSettings={cameraSettings}
         seekTarget={seekTarget}
-        showHud={isHudVisible}
+        showHud={hudStage !== 'none'}
         volume={audioSettings.volume}
         muted={audioSettings.muted}
         onAudioStatus={setAudioStatus}
@@ -245,11 +276,11 @@ export const App: React.FC = () => {
         loadingMessage={loadingMessage}
         onFileLoaded={handleFileLoaded}
         onLoadSample={handleLoadSample}
-        showControls={!isCompactMobile && isHudVisible && replayData !== null}
+        showControls={!isCompactMobile && hudStage === 'full' && replayData !== null}
         showStartPrompt={replayData === null && !isLoading}
-        onHideHud={() => setIsHudVisible(false)}
-        showRevealButton={!isCompactMobile && !isHudVisible && replayData !== null}
-        onShowHud={() => setIsHudVisible(true)}
+        hudStage={hudStage}
+        onCycleHudStage={handleCycleHudStage}
+        showRevealButton={!isCompactMobile && hudStage !== 'full' && replayData !== null}
         fileInputRef={fileInputRef}
       />
 
@@ -280,85 +311,98 @@ export const App: React.FC = () => {
           onLoadSample={handleLoadSample}
           onOpenFile={() => fileInputRef.current?.click()}
         />
-      ) : isHudVisible && replayData && (
+      ) : replayData && (
         <>
-          {/* 3. Compact score (Desktop) */}
-          <div className="absolute inset-x-0 top-3 flex justify-center z-20 pointer-events-none">
-            <div className="pointer-events-auto">
-              <Scoreboard
-                frameState={frameState}
-                teamScores={liveTeamScores}
-                blueTeamName="BLUE"
-                orangeTeamName="ORANGE"
-              />
-            </div>
-          </div>
+          {/* 3. Match HUD: Scoreboard & Boost Meter (visible in 'full' and 'match' stages) */}
+          {(hudStage === 'full' || hudStage === 'match') && (
+            <>
+              <div className="absolute inset-x-0 top-3 flex justify-center z-20 pointer-events-none">
+                <div className="pointer-events-auto">
+                  <Scoreboard
+                    frameState={frameState}
+                    teamScores={liveTeamScores}
+                    activeGoal={activeGoal}
+                    blueTeamName="BLUE"
+                    orangeTeamName="ORANGE"
+                  />
+                </div>
+              </div>
 
-          <div className="absolute z-20 top-3 left-3 hud-panel h-10 px-3 pointer-events-none flex items-center">
-            <RLViewerLogo size={22} showText={true} />
-          </div>
+              <div
+                className={`absolute z-20 right-3 pointer-events-none transition-[bottom] duration-150 ${
+                  hudStage === 'full' ? 'bottom-[var(--hud-bottom)]' : 'bottom-4'
+                }`}
+              >
+                <div className="pointer-events-auto flex items-end justify-end">
+                  <PlayerTelemetry
+                    frameState={frameState}
+                    activePlayerIndex={activePlayerIndex}
+                    isBallCam={isBallCam}
+                    onToggleBallCam={handleToggleBallCam}
+                    showCard={hudStage === 'full'}
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
-          {/* 4. Analysis and camera controls (Desktop) */}
-          <div className="absolute z-20 left-3 bottom-[var(--hud-bottom)] pointer-events-none">
-            <div className="pointer-events-auto flex items-end gap-2.5 origin-bottom-left">
-              <TacticalMinimap
-                frameState={frameState}
-                activePlayerIndex={activePlayerIndex}
-                onSelectPlayer={handleSelectPlayer}
-                defaultCollapsed={false}
-              />
-              <CameraToolbar
-                mode={cameraMode}
-                activePlayerIndex={activePlayerIndex}
-                players={replayData?.players || []}
-                cameraSettings={cameraSettings}
-                isBallCam={isBallCam}
-                onSetMode={setCameraMode}
-                onSelectPlayer={handleSelectPlayer}
-                onToggleBallCam={handleToggleBallCam}
-                onUpdateCameraSettings={(patch) =>
-                  setCameraSettings((prev) => ({ ...prev, ...patch }))
-                }
-              />
-            </div>
-          </div>
+          {/* 4. Replay Controls: Logo, Map, Camera Toolbar & Timeline (visible in 'full' stage) */}
+          {hudStage === 'full' && (
+            <>
+              <div className="absolute z-20 top-3 left-3 hud-panel h-9 px-2.5 pointer-events-none flex items-center">
+                <RLViewerLogo size={18} showText={true} />
+              </div>
 
-          {/* 5. Compact player telemetry (Desktop) */}
-          <div className="absolute z-20 right-3 bottom-[var(--hud-bottom)] pointer-events-none">
-            <div className="pointer-events-auto flex items-end justify-end">
-              <PlayerTelemetry
-                frameState={frameState}
-                activePlayerIndex={activePlayerIndex}
-                isBallCam={isBallCam}
-                onToggleBallCam={handleToggleBallCam}
-              />
-            </div>
-          </div>
+              <div className="absolute z-20 left-3 bottom-[var(--hud-bottom)] pointer-events-none">
+                <div className="pointer-events-auto flex items-end gap-2 origin-bottom-left">
+                  <TacticalMinimap
+                    frameState={frameState}
+                    boostPads={replayData?.boostPads}
+                    activePlayerIndex={activePlayerIndex}
+                    onSelectPlayer={handleSelectPlayer}
+                    defaultCollapsed={false}
+                  />
+                  <CameraToolbar
+                    mode={cameraMode}
+                    activePlayerIndex={activePlayerIndex}
+                    players={replayData?.players || []}
+                    cameraSettings={cameraSettings}
+                    isBallCam={isBallCam}
+                    onSetMode={setCameraMode}
+                    onSelectPlayer={handleSelectPlayer}
+                    onToggleBallCam={handleToggleBallCam}
+                    onUpdateCameraSettings={(patch) =>
+                      setCameraSettings((prev) => ({ ...prev, ...patch }))
+                    }
+                  />
+                </div>
+              </div>
 
-          {/* 6. Playback (Desktop) */}
-          <div className="absolute bottom-0 inset-x-0 z-20">
-            <PlaybackTimeline
-              currentTime={currentTime}
-              duration={replayData?.duration || 0}
-              currentFrame={currentFrame}
-              totalFrames={replayData?.totalFrames || 0}
-              isPlaying={isPlaying}
-              playbackSpeed={playbackSpeed}
-              volume={audioSettings.volume}
-              muted={audioSettings.muted}
-              audioStatus={audioStatus}
-              isFullscreen={isFullscreen}
-              onToggleFullscreen={toggleFullscreen}
-              onToggleMute={handleToggleMute}
-              onChangeVolume={(volume) => setAudioSettings({ volume, muted: false })}
-              tickMarks={replayData?.tickMarks || []}
-              onTogglePlay={handleTogglePlay}
-              onSeekTime={handleSeekTime}
-              onSeekFrame={handleSeekFrame}
-              onChangeSpeed={setPlaybackSpeed}
-              onStepFrame={handleStepFrame}
-            />
-          </div>
+              <div className="absolute bottom-0 inset-x-0 z-20">
+                <PlaybackTimeline
+                  currentTime={currentTime}
+                  duration={replayData?.duration || 0}
+                  currentFrame={currentFrame}
+                  totalFrames={replayData?.totalFrames || 0}
+                  isPlaying={isPlaying}
+                  playbackSpeed={playbackSpeed}
+                  volume={audioSettings.volume}
+                  muted={audioSettings.muted}
+                  audioStatus={audioStatus}
+                  isFullscreen={isFullscreen}
+                  onToggleFullscreen={toggleFullscreen}
+                  onToggleMute={handleToggleMute}
+                  onChangeVolume={(volume) => setAudioSettings({ volume, muted: false })}
+                  tickMarks={replayData?.tickMarks || []}
+                  onTogglePlay={handleTogglePlay}
+                  onSeekTime={handleSeekTime}
+                  onSeekFrame={handleSeekFrame}
+                  onChangeSpeed={setPlaybackSpeed}
+                  onStepFrame={handleStepFrame}
+                />
+              </div>
+            </>
+          )}
         </>
       )}
     </div>

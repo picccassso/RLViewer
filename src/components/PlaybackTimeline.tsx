@@ -132,10 +132,10 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
         paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
         paddingLeft: 'max(16px, env(safe-area-inset-left))',
         paddingRight: 'max(16px, env(safe-area-inset-right))',
-        background: 'linear-gradient(180deg, rgb(7 10 20 / 0.82) 0%, rgb(5 7 15 / 0.96) 45%, rgb(4 6 12 / 0.98) 100%)',
-        boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.07), 0 -12px 32px -12px rgb(0 0 0 / 0.6)',
-        backdropFilter: 'blur(14px)',
-        WebkitBackdropFilter: 'blur(14px)',
+        background: 'rgb(11 15 25 / 0.92)',
+        borderTop: '1px solid rgb(255 255 255 / 0.1)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
       }}
     >
       {/* 1. Scrubber Track & Discrete Event Tick Markers */}
@@ -149,15 +149,15 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
         className="relative w-full h-4 flex items-center cursor-pointer group touch-none"
       >
         {/* Track */}
-        <div className="relative w-full h-1.5 rounded-full bg-white/[0.12] overflow-hidden transition-[height] duration-150 group-hover:h-2">
+        <div className="relative w-full h-1 rounded-sm bg-white/[0.14] overflow-hidden">
           {hoverTime !== null && (
             <div
-              className="absolute inset-y-0 left-0 bg-white/15"
+              className="absolute inset-y-0 left-0 bg-white/20"
               style={{ width: `${hoverPos}px` }}
             />
           )}
           <div
-            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-cyan-500 to-cyan-300"
+            className="absolute inset-y-0 left-0 bg-white/85"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
@@ -165,7 +165,7 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
         {/* Hover Time Tooltip */}
         {hoverTime !== null && (
           <div
-            className="absolute -top-8 -translate-x-1/2 hud-panel rounded-md px-2 py-1 font-numeric text-[11px] tabular-nums text-white pointer-events-none z-20"
+            className="absolute -top-8 -translate-x-1/2 hud-panel rounded px-2 py-0.5 font-numeric text-[11px] tabular-nums text-white pointer-events-none z-20"
             style={{ left: `${hoverPos}px` }}
           >
             {formatTime(hoverTime)}
@@ -189,13 +189,13 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
                     onSeekTime(tm.time);
                   }}
                   onPointerDown={(e) => e.stopPropagation()}
-                  className="relative group/marker cursor-pointer transition-transform hover:scale-125"
+                  className="relative group/marker cursor-pointer transition-transform hover:scale-110"
                   aria-label={`${tm.description} at ${formatTime(tm.time)}`}
                 >
                   {tm.type === 'goal' ? <GoalIcon team={tm.team} /> : <SaveIcon team={tm.team} />}
 
                   {/* Marker Tooltip */}
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/marker:flex hud-panel rounded-md px-2.5 py-1.5 whitespace-nowrap z-30 flex-col items-center gap-0.5">
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/marker:flex hud-panel rounded px-2 py-1 whitespace-nowrap z-30 flex-col items-center gap-0.5">
                     <span className="font-display text-[12px] font-semibold text-white">{tm.description}</span>
                     <span className="font-numeric text-[10px] text-slate-400">{formatTime(tm.time)}</span>
                   </div>
@@ -208,7 +208,7 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
 
         {/* Playhead thumb */}
         <div
-          className="absolute h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-white pointer-events-none shadow-[0_0_0_3px_rgb(34_211_238/0.35),0_1px_4px_rgb(0_0_0/0.6)] transition-transform duration-150 group-hover:scale-110"
+          className="absolute h-3 w-3 -translate-x-1/2 rounded-full bg-white pointer-events-none shadow-sm"
           style={{ left: `${progressPercent}%` }}
         />
       </div>
@@ -238,11 +238,11 @@ export const PlaybackTimeline: React.FC<PlaybackTimelineProps> = ({
 
           <button
             onClick={onTogglePlay}
-            className="mx-1 flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-950 shadow-[0_0_0_4px_rgb(255_255_255/0.08),0_4px_14px_rgb(0_0_0/0.5)] transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            className="mx-1 flex h-8 w-8 items-center justify-center rounded bg-white text-slate-950 transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white"
             title={isPlaying ? 'Pause (K)' : 'Play (K)'}
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
-            {isPlaying ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" className="ml-0.5" />}
+            {isPlaying ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" className="ml-0.5" />}
           </button>
 
           <button

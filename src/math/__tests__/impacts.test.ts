@@ -10,7 +10,7 @@ import {
   ParsedReplayData,
   TOTAL_FLOATS_PER_FRAME,
 } from '../../types/replay';
-import { buildImpacts, DEMO_SECONDS, HIT_SECONDS, Impact, sampleImpacts } from '../impacts';
+import { buildImpacts, DEMO_SECONDS, HIT_SECONDS, Impact, resolveGoalScoredTime, sampleImpacts } from '../impacts';
 import { buildReplayData } from '../../parser/buildReplayData';
 import { sampleFlipResetFlashes } from '../flipReset';
 import { unpackFrame } from '../frameUnpacker';
@@ -181,6 +181,14 @@ describe('Contact effects', () => {
     // Every recorded touch can spark, including soft carries.
     const hits = impacts.filter((i) => i.kind === 'hit').length;
     expect(hits).toBe(data.ballTouches.length);
+
+    // Goal explosions trigger when the ball actually crosses into the net (after the timeline tick mark).
+    const goalMark = data.tickMarks.find((tm) => tm.type === 'goal')!;
+    const scoredTime = resolveGoalScoredTime(data, goalMark.time);
+    expect(scoredTime).toBeGreaterThan(goalMark.time + 0.5);
+    const goalImpact = impacts.find((i) => i.kind === 'goal')!;
+    expect(goalImpact.time).toBeCloseTo(scoredTime, 5);
+    expect(Math.abs(goalImpact.z)).toBeGreaterThan(5120);
   });
 });
 

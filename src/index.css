@@ -44,6 +44,44 @@
   animation: pulse-ring 2.8s ease-in-out infinite;
 }
 
+@keyframes ball-cam-blink {
+  0%, 100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 6px rgb(56 189 248 / 0.9));
+  }
+  50% {
+    opacity: 0.4;
+    filter: drop-shadow(0 0 2px rgb(56 189 248 / 0.3));
+  }
+}
+
+.animate-ball-cam {
+  animation: ball-cam-blink 1.6s ease-in-out infinite;
+}
+
+@keyframes goal-banner-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.92);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  88% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+  }
+}
+
+.animate-goal-banner {
+  animation: goal-banner-pop 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 html,
 body,
 #root {
@@ -87,110 +125,98 @@ body {
   }
 
   /*
-   * Desktop HUD surfaces. The arena behind them is bright and busy, so every panel
-   * gets a near-opaque fill, a hairline edge, a top highlight and a drop shadow to
-   * lift it clear of the scene.
+   * Flat, understated HUD surfaces: solid dark slate fill, subtle 1px border,
+   * tight corner radius, no neon glows or heavy gradients.
    */
   .hud-panel {
-    @apply rounded-xl text-slate-100;
-    background: linear-gradient(180deg, rgb(20 27 45 / 0.9) 0%, rgb(8 11 22 / 0.94) 100%);
-    border: 1px solid rgb(255 255 255 / 0.08);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.06),
-      0 10px 30px -8px rgb(0 0 0 / 0.65),
-      0 2px 6px rgb(0 0 0 / 0.35);
-    backdrop-filter: blur(14px) saturate(140%);
-    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    @apply rounded-md text-slate-100;
+    background: rgb(13 17 26 / 0.9);
+    border: 1px solid rgb(255 255 255 / 0.1);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
 
   .hud-label {
-    @apply font-display text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-slate-400;
+    @apply font-display text-[11px] font-semibold uppercase leading-none tracking-[0.1em] text-slate-400;
   }
 
   .hud-btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg font-display font-semibold text-slate-300 transition-colors duration-150;
-    @apply hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60;
+    @apply inline-flex items-center justify-center gap-1.5 rounded font-display font-semibold text-slate-300 transition-colors duration-100;
+    @apply hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/40;
     @apply disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent;
   }
 
   .hud-btn-active {
-    @apply bg-white/[0.12] text-white;
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+    @apply bg-white/[0.16] text-white;
   }
 
   /* A row of mutually exclusive options, e.g. camera mode or playback speed. */
   .hud-segment {
-    @apply flex items-center gap-0.5 rounded-lg bg-black/30 p-0.5;
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+    @apply flex items-center gap-0.5 rounded bg-black/40 p-0.5;
+    border: 1px solid rgb(255 255 255 / 0.06);
   }
 
   .hud-kbd {
-    @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded border border-white/15 bg-white/5 px-1 font-mono text-[10px] font-medium leading-none text-slate-300;
-    box-shadow: inset 0 -1px 0 rgb(255 255 255 / 0.08);
+    @apply inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-sm border border-white/15 bg-white/[0.06] px-1 font-mono text-[10px] font-medium leading-none text-slate-300;
   }
 
   /* Slider with a filled track; the fill width comes from --fill (0%–100%). */
   .hud-range {
     @apply h-4 w-full cursor-pointer appearance-none bg-transparent;
     --fill: 50%;
-    --accent: #22d3ee;
+    --accent: #e2e8f0;
   }
   .hud-range::-webkit-slider-runnable-track {
     height: 4px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, var(--accent) var(--fill), rgb(255 255 255 / 0.12) var(--fill));
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent) var(--fill), rgb(255 255 255 / 0.15) var(--fill));
   }
   .hud-range::-moz-range-track {
     height: 4px;
-    border-radius: 999px;
-    background: rgb(255 255 255 / 0.12);
+    border-radius: 2px;
+    background: rgb(255 255 255 / 0.15);
   }
   .hud-range::-moz-range-progress {
     height: 4px;
-    border-radius: 999px;
+    border-radius: 2px;
     background: var(--accent);
   }
   .hud-range::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    margin-top: -5px;
-    width: 14px;
-    height: 14px;
+    margin-top: -4px;
+    width: 12px;
+    height: 12px;
     border-radius: 999px;
     background: #fff;
     border: 0;
-    box-shadow: 0 0 0 3px rgb(34 211 238 / 0.25), 0 1px 3px rgb(0 0 0 / 0.5);
-    transition: transform 120ms ease;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.5);
   }
   .hud-range::-moz-range-thumb {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     border-radius: 999px;
     background: #fff;
     border: 0;
-    box-shadow: 0 0 0 3px rgb(34 211 238 / 0.25), 0 1px 3px rgb(0 0 0 / 0.5);
-  }
-  .hud-range:hover::-webkit-slider-thumb {
-    transform: scale(1.15);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.5);
   }
   .hud-range:focus-visible {
     outline: none;
-  }
-  .hud-range:focus-visible::-webkit-slider-thumb {
-    box-shadow: 0 0 0 4px rgb(34 211 238 / 0.55), 0 1px 3px rgb(0 0 0 / 0.5);
   }
   .hud-range:disabled {
     @apply cursor-not-allowed opacity-40;
   }
 
-  /* Player names over the 3D view, placed by CSS2DRenderer. */
+  /*
+   * Player names over the 3D view, placed by CSS2DRenderer.
+   * Flat, compact team-coloured tags without thick borders or glow effects.
+   */
   .nameplate {
-    @apply relative mb-1.5 whitespace-nowrap rounded-md px-2 pb-1 pt-0.5 font-display text-[14px] font-bold leading-tight text-white;
-    background: linear-gradient(180deg, rgb(15 20 34 / 0.88), rgb(6 9 18 / 0.92));
-    border: 1px solid rgb(255 255 255 / 0.1);
-    border-top-width: 2px;
-    box-shadow: 0 4px 12px rgb(0 0 0 / 0.45);
-    text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
+    @apply relative mb-1 whitespace-nowrap rounded-[3px] px-1.5 pb-[2px] pt-[1px] font-display text-[10.5px] font-semibold leading-tight text-white;
+    border: 1px solid rgb(0 0 0 / 0.45);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+    text-shadow: 0 1px 1px rgb(0 0 0 / 0.7);
   }
 
   /* Small pointer down to the car. */
@@ -199,39 +225,42 @@ body {
     position: absolute;
     left: 50%;
     top: 100%;
-    width: 8px;
-    height: 8px;
-    transform: translate(-50%, -4px) rotate(45deg);
-    background: rgb(6 9 18 / 0.92);
-    border-right: 1px solid rgb(255 255 255 / 0.1);
-    border-bottom: 1px solid rgb(255 255 255 / 0.1);
+    width: 4px;
+    height: 4px;
+    transform: translate(-50%, -2px) rotate(45deg);
   }
 
   .nameplate-boost {
-    @apply mt-0.5 h-[3px] overflow-hidden rounded-full bg-white/15;
+    @apply mt-[1.5px] h-[2px] overflow-hidden rounded-none bg-black/45;
   }
 
   .nameplate-boost-fill {
     @apply h-full w-full;
-    background: linear-gradient(90deg, #ff6a00, #ffd23f);
+    background: #fbbf24;
     transform-origin: left;
     transform: scaleX(0);
   }
 
   .nameplate-blue {
-    border-top-color: #3b9cff;
+    background: rgb(25 104 204 / 0.92);
+  }
+  .nameplate-blue::after {
+    background: rgb(25 104 204 / 0.92);
   }
 
   .nameplate-orange {
-    border-top-color: #ff8a1f;
+    background: rgb(214 90 18 / 0.92);
+  }
+  .nameplate-orange::after {
+    background: rgb(214 90 18 / 0.92);
   }
 }
 
 /* Phones in landscape: smaller nameplates so they crowd the view less. */
 @media (max-height: 560px) {
   .nameplate {
-    padding: 1px 6px 3px;
-    font-size: 12px;
+    padding: 1px 4px 1.5px;
+    font-size: 9px;
   }
 }
 

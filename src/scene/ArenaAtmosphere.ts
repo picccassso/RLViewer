@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 
 /** Team light colours, shared by the sky, the reflection environment and the rim lights. */
-export const BLUE_LIGHT = new THREE.Color(0x2f7bff);
-export const ORANGE_LIGHT = new THREE.Color(0xff7a1f);
+export const BLUE_LIGHT = new THREE.Color(0x1f8aff);
+export const ORANGE_LIGHT = new THREE.Color(0xff7315);
 
 /**
- * Equirectangular night sky: deep indigo zenith, a violet horizon band, the blue team's
- * glow behind the -Z goal and the orange team's behind +Z, plus a star field.
+ * Equirectangular night sky: deep indigo zenith, stadium searchlight beams, floodlight
+ * bokeh along the upper rim, the blue team's glow behind -Z and orange behind +Z, plus stars.
  * Returns null outside the browser (tests), where there is no canvas.
  */
 export function createNightSkyTexture(): THREE.Texture | null {
@@ -20,12 +20,12 @@ export function createNightSkyTexture(): THREE.Texture | null {
 
   // Vertical gradient: v = 0 is straight up, v = 0.5 the horizon.
   const sky = ctx.createLinearGradient(0, 0, 0, h);
-  sky.addColorStop(0.0, '#04051a');
-  sky.addColorStop(0.28, '#0c1140');
-  sky.addColorStop(0.44, '#2a1d66');
-  sky.addColorStop(0.5, '#4a2a7a');
-  sky.addColorStop(0.56, '#1a1236');
-  sky.addColorStop(1.0, '#07060f');
+  sky.addColorStop(0.0, '#020412');
+  sky.addColorStop(0.24, '#081032');
+  sky.addColorStop(0.42, '#162058');
+  sky.addColorStop(0.5, '#2b2468');
+  sky.addColorStop(0.56, '#12102c');
+  sky.addColorStop(1.0, '#05050d');
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, w, h);
 
@@ -36,22 +36,51 @@ export function createNightSkyTexture(): THREE.Texture | null {
     const v = Math.pow(rand(), 1.6) * 0.47;
     const x = rand() * w;
     const y = v * h;
-    const size = rand() < 0.05 ? 1.1 : 0.55;
-    ctx.globalAlpha = (0.25 + rand() * 0.6) * (1 - v * 1.6);
-    ctx.fillStyle = rand() < 0.15 ? '#cfe0ff' : '#ffffff';
+    const size = rand() < 0.05 ? 1.15 : 0.55;
+    ctx.globalAlpha = (0.25 + rand() * 0.65) * (1 - v * 1.6);
+    ctx.fillStyle = rand() < 0.2 ? '#bce0ff' : '#ffffff';
     ctx.beginPath();
     ctx.arc(x, y, size, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
 
+  // Upward stadium searchlight beams rising from the arena corners into the night sky.
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const beamPositions = [
+    { u: 0.14, rgb: '40, 140, 255', tilt: -0.12 },
+    { u: 0.25, rgb: '60, 160, 255', tilt: 0.0 },
+    { u: 0.36, rgb: '40, 140, 255', tilt: 0.12 },
+    { u: 0.64, rgb: '255, 120, 35', tilt: -0.12 },
+    { u: 0.75, rgb: '255, 145, 50', tilt: 0.0 },
+    { u: 0.86, rgb: '255, 120, 35', tilt: 0.12 },
+  ];
+  for (const b of beamPositions) {
+    const bx = b.u * w;
+    const by = h * 0.5;
+    const beamGrad = ctx.createLinearGradient(bx, by, bx + b.tilt * w * 0.2, h * 0.08);
+    beamGrad.addColorStop(0, `rgba(${b.rgb}, 0.22)`);
+    beamGrad.addColorStop(0.5, `rgba(${b.rgb}, 0.06)`);
+    beamGrad.addColorStop(1, `rgba(${b.rgb}, 0)`);
+    ctx.fillStyle = beamGrad;
+    ctx.beginPath();
+    ctx.moveTo(bx - 18, by);
+    ctx.lineTo(bx + 18, by);
+    ctx.lineTo(bx + b.tilt * w * 0.2 + 95, h * 0.08);
+    ctx.lineTo(bx + b.tilt * w * 0.2 - 95, h * 0.08);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
   // Team glows on the horizon. With Three's equirect mapping, u = 0.25 faces -Z and 0.75 faces +Z.
   const glow = (u: number, rgb: string) => {
     const cx = u * w;
     const cy = h * 0.5;
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.22);
-    g.addColorStop(0, `rgba(${rgb}, 0.75)`);
-    g.addColorStop(0.35, `rgba(${rgb}, 0.28)`);
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.24);
+    g.addColorStop(0, `rgba(${rgb}, 0.85)`);
+    g.addColorStop(0.32, `rgba(${rgb}, 0.34)`);
     g.addColorStop(1, `rgba(${rgb}, 0)`);
     ctx.globalCompositeOperation = 'lighter';
     ctx.fillStyle = g;
@@ -63,8 +92,8 @@ export function createNightSkyTexture(): THREE.Texture | null {
     ctx.restore();
     ctx.globalCompositeOperation = 'source-over';
   };
-  glow(0.25, '40, 120, 255');
-  glow(0.75, '255, 110, 30');
+  glow(0.25, '30, 130, 255');
+  glow(0.75, '255, 115, 25');
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.mapping = THREE.EquirectangularReflectionMapping;
@@ -134,8 +163,9 @@ export function createArenaEnvironment(renderer: THREE.WebGLRenderer): THREE.Tex
 }
 
 /**
- * Tints a floor material with the pool of team light spilling out of each goal: blue
- * towards -Z, orange towards +Z, fading out before midfield.
+ * Tints a floor material with the pool of team light spilling out of each goal (blue
+ * towards -Z, orange towards +Z), plus subtle alternating lawn-mower turf stripes and
+ * a faint hexagonal field weave so the pitch reads crisply at any camera angle.
  */
 export function withTeamLightWash(material: THREE.Material, strength: number): THREE.Material {
   material.onBeforeCompile = (shader) => {
@@ -145,7 +175,7 @@ export function withTeamLightWash(material: THREE.Material, strength: number): T
       .replace('#include <common>', '#include <common>\nvarying vec3 vWashWorldPos;')
       .replace(
         '#include <project_vertex>',
-        '#include <project_vertex>\nvWashWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;'
+        '#include <project_vertex>\nvSightWash_init:;\nvWashWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;'.replace('vSightWash_init:;\n', '')
       );
     shader.fragmentShader = shader.fragmentShader
       .replace(
@@ -153,10 +183,18 @@ export function withTeamLightWash(material: THREE.Material, strength: number): T
         '#include <common>\nvarying vec3 vWashWorldPos;\nuniform vec3 uWashBlue;\nuniform vec3 uWashOrange;'
       )
       .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+// Alternating cross-pitch mower bands (~640 uu wide) + subtle lengthwise cut lines
+float mowerBand = smoothstep(-0.08, 0.08, sin(vWashWorldPos.z * 0.0049087));
+float lengthBand = smoothstep(-0.08, 0.08, sin(vWashWorldPos.x * 0.003835));
+diffuseColor.rgb *= (0.91 + 0.14 * mowerBand) * (0.97 + 0.05 * lengthBand);`
+      )
+      .replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
-float washEnd = smoothstep(800.0, 5200.0, abs(vWashWorldPos.z));
-float washCentre = 1.0 - smoothstep(1500.0, 4200.0, abs(vWashWorldPos.x));
+float washEnd = smoothstep(600.0, 5200.0, abs(vWashWorldPos.z));
+float washCentre = 1.0 - smoothstep(1400.0, 4200.0, abs(vWashWorldPos.x));
 vec3 washColor = vWashWorldPos.z < 0.0 ? uWashBlue : uWashOrange;
 totalEmissiveRadiance += diffuseColor.rgb * washColor * washEnd * (0.55 + 0.45 * washCentre) * ${strength.toFixed(3)};`
       );

@@ -118,7 +118,7 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
               <button
                 type="button"
                 onClick={() => onUpdateCameraSettings(players[activePlayerIndex].camera_settings)}
-                className="hud-btn h-7 bg-cyan-400/15 text-[12px] text-cyan-200 hover:bg-cyan-400/25 hover:text-cyan-100"
+                className="hud-btn h-7 bg-white/10 text-[12px] text-white hover:bg-white/15"
                 title="Reset to selected player recorded settings"
               >
                 Player
@@ -162,7 +162,7 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
                 key={m}
                 type="button"
                 onClick={() => onSetMode(m)}
-                className={`hud-btn h-8 w-9 xl:w-auto xl:px-2.5 text-[12px] uppercase tracking-wider ${mode === m ? 'hud-btn-active' : 'text-slate-400'}`}
+                className={`hud-btn h-7 w-8 xl:w-auto xl:px-2.5 text-[12px] uppercase tracking-wider ${mode === m ? 'hud-btn-active' : 'text-slate-400'}`}
                 title={title}
                 aria-pressed={mode === m}
               >
@@ -175,20 +175,20 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
           <button
             type="button"
             onClick={onToggleBallCam}
-            className={`hud-btn h-8 w-8 ${isBallCam ? 'bg-cyan-400/15 text-cyan-200 hover:bg-cyan-400/20 hover:text-cyan-100' : 'text-slate-400'}`}
+            className={`hud-btn h-7 w-7 ${isBallCam ? 'hud-btn-active' : 'text-slate-400'}`}
             title="Toggle Ball Cam [Space]"
             aria-pressed={isBallCam}
           >
-            <Eye size={15} />
+            <Eye size={14} />
           </button>
           <button
             type="button"
             onClick={() => setShowSettings(!showSettings)}
-            className={`hud-btn h-8 w-8 ${showSettings ? 'hud-btn-active' : 'text-slate-400'}`}
+            className={`hud-btn h-7 w-7 ${showSettings ? 'hud-btn-active' : 'text-slate-400'}`}
             title="Camera Profile Settings"
             aria-expanded={showSettings}
           >
-            <SlidersHorizontal size={15} />
+            <SlidersHorizontal size={14} />
           </button>
         </div>
 
@@ -208,17 +208,17 @@ export const CameraToolbar: React.FC<CameraToolbarProps> = ({
                       className={`hud-btn h-7 min-w-0 flex-1 justify-start gap-1.5 pl-1 pr-2 text-[13px] ${
                         isSelected
                           ? isBlue
-                            ? 'bg-[#1672e8]/30 text-white ring-1 ring-inset ring-[#3b9cff]/60 hover:bg-[#1672e8]/40'
-                            : 'bg-[#f06a0f]/30 text-white ring-1 ring-inset ring-[#ff8a1f]/60 hover:bg-[#f06a0f]/40'
-                          : 'text-slate-400'
+                            ? 'bg-[#1968cc]/35 text-white border border-[#1968cc]/70'
+                            : 'bg-[#d65a12]/35 text-white border border-[#d65a12]/70'
+                          : 'text-slate-400 border border-transparent'
                       }`}
                       title={`Switch to ${p.name} [Key ${idx + 1}]`}
                       aria-pressed={isSelected}
                     >
                       <span
-                        className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded font-numeric text-[10px] font-bold text-white ${
-                          isBlue ? 'bg-[#1672e8]' : 'bg-[#f06a0f]'
-                        } ${isSelected ? '' : 'opacity-60'}`}
+                        className={`flex h-[17px] w-[17px] shrink-0 items-center justify-center rounded-sm font-numeric text-[10px] font-bold text-white ${
+                          isBlue ? 'bg-[#1968cc]' : 'bg-[#d65a12]'
+                        } ${isSelected ? '' : 'opacity-65'}`}
                       >
                         {idx + 1}
                       </span>

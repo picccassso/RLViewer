@@ -6,6 +6,8 @@ interface ScoreboardProps {
   teamScores: { team0: number; team1: number };
   blueTeamName?: string;
   orangeTeamName?: string;
+  /** Optional goal celebration banner when a goal was just scored. */
+  activeGoal?: { description: string; team: 0 | 1; time: number } | null;
   /** Smaller version for phones. */
   compact?: boolean;
 }
@@ -17,62 +19,100 @@ function formatClock(seconds: number) {
   return seconds < 0 ? `+${clock}` : clock;
 }
 
-/** Broadcast-style score bug: team name, score, clock, score, team name. */
+/**
+ * Clean, flat broadcast-style score bug:
+ * Solid team colour blocks, dark score cells, central clock, and a flat goal notification bar.
+ */
 export const Scoreboard: React.FC<ScoreboardProps> = ({
   frameState,
   teamScores,
   blueTeamName = 'BLUE',
   orangeTeamName = 'ORANGE',
+  activeGoal = null,
   compact = false,
 }) => {
   const secondsRemaining = frameState ? frameState.secondsRemaining : 300;
   const isOvertime = secondsRemaining <= 0;
 
   const size = compact
-    ? { bar: 'h-8', team: 'w-[74px] px-2.5 text-[12px]', score: 'w-9 text-[19px]', clock: 'min-w-[64px] px-2 text-[16px]' }
-    : { bar: 'h-11', team: 'w-[108px] px-3.5 text-[15px]', score: 'w-12 text-[26px]', clock: 'min-w-[92px] px-3 py-1 text-[22px]' };
+    ? {
+        bar: 'h-7',
+        team: 'w-[68px] px-2.5 text-[11px]',
+        score: 'w-8 text-[17px]',
+        clock: 'min-w-[60px] px-2 text-[15px]',
+      }
+    : {
+        bar: 'h-10',
+        team: 'w-[100px] px-3 text-[14px]',
+        score: 'w-11 text-[23px]',
+        clock: 'min-w-[84px] px-3 text-[20px]',
+      };
 
   return (
-    <div className={`flex items-stretch ${size.bar} select-none rounded-xl overflow-hidden shadow-[0_10px_30px_-8px_rgb(0_0_0/0.7),0_2px_6px_rgb(0_0_0/0.4)] ring-1 ring-white/10`}>
-      {/* Blue */}
-      <div className={`flex items-center justify-end ${size.team} bg-gradient-to-r from-[#0b3d8c] to-[#1672e8]`}>
-        <span className="font-display font-bold tracking-[0.12em] text-white drop-shadow">
-          {blueTeamName}
-        </span>
-      </div>
-      <div className={`flex items-center justify-center ${size.score} bg-[#0a1a33] border-b-2 border-[#3b9cff]`}>
-        <span className="font-numeric font-bold leading-none tabular-nums text-white">
-          {teamScores.team0}
-        </span>
-      </div>
-
-      {/* Clock */}
-      <div className={`flex flex-col items-center justify-center ${size.clock} bg-[#070b16]/95 backdrop-blur-md`}>
-        <span
-          className={`font-numeric font-bold leading-none tabular-nums ${
-            isOvertime ? 'text-amber-300' : 'text-white'
-          }`}
-        >
-          {formatClock(secondsRemaining)}
-        </span>
-        {isOvertime && !compact && (
-          <span className="mt-0.5 font-display text-[9px] font-bold uppercase tracking-[0.22em] text-amber-300/80">
-            Overtime
+    <div className="flex flex-col items-center select-none">
+      {/* Main Score Bar */}
+      <div className={`flex items-stretch ${size.bar} overflow-hidden rounded border border-white/15 bg-[#0a0d16] shadow-md`}>
+        {/* Blue Team */}
+        <div className={`flex items-center justify-end ${size.team} bg-[#1968cc]`}>
+          <span className="font-display font-bold uppercase tracking-[0.08em] text-white">
+            {blueTeamName}
           </span>
-        )}
+        </div>
+
+        {/* Blue Score */}
+        <div className={`flex items-center justify-center ${size.score} bg-[#101624] border-x border-white/10`}>
+          <span className="font-numeric font-bold leading-none tabular-nums text-white">
+            {teamScores.team0}
+          </span>
+        </div>
+
+        {/* Clock */}
+        <div className={`flex flex-col items-center justify-center ${size.clock} bg-[#090d16]`}>
+          <span
+            className={`font-numeric font-bold leading-none tabular-nums ${
+              isOvertime ? 'text-amber-300' : 'text-white'
+            }`}
+          >
+            {formatClock(secondsRemaining)}
+          </span>
+          {isOvertime && !compact && (
+            <span className="mt-0.5 font-display text-[8px] font-bold uppercase tracking-[0.18em] text-amber-300">
+              OT
+            </span>
+          )}
+        </div>
+
+        {/* Orange Score */}
+        <div className={`flex items-center justify-center ${size.score} bg-[#101624] border-x border-white/10`}>
+          <span className="font-numeric font-bold leading-none tabular-nums text-white">
+            {teamScores.team1}
+          </span>
+        </div>
+
+        {/* Orange Team */}
+        <div className={`flex items-center justify-start ${size.team} bg-[#d65a12]`}>
+          <span className="font-display font-bold uppercase tracking-[0.08em] text-white">
+            {orangeTeamName}
+          </span>
+        </div>
       </div>
 
-      {/* Orange */}
-      <div className={`flex items-center justify-center ${size.score} bg-[#2a1405] border-b-2 border-[#ff8a1f]`}>
-        <span className="font-numeric font-bold leading-none tabular-nums text-white">
-          {teamScores.team1}
-        </span>
-      </div>
-      <div className={`flex items-center justify-start ${size.team} bg-gradient-to-l from-[#8a3a05] to-[#f06a0f]`}>
-        <span className="font-display font-bold tracking-[0.12em] text-white drop-shadow">
-          {orangeTeamName}
-        </span>
-      </div>
+      {/* Flat Goal Notification Bar */}
+      {activeGoal && (
+        <div
+          key={`${activeGoal.team}-${activeGoal.time}`}
+          className="animate-goal-banner pointer-events-none mt-1.5 flex items-center gap-2 rounded border border-white/15 bg-[#0d111a]/95 px-3 py-1 shadow-md"
+        >
+          <span
+            className={`h-2 w-2 rounded-xs ${
+              activeGoal.team === 0 ? 'bg-[#1968cc]' : 'bg-[#d65a12]'
+            }`}
+          />
+          <span className="font-display text-[12px] font-bold uppercase tracking-[0.08em] text-white">
+            {activeGoal.description}
+          </span>
+        </div>
+      )}
     </div>
   );
 };

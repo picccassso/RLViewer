@@ -1,8 +1,54 @@
-import { FrameState, ParsedReplayData } from '../types/replay';
+import {
+  FLOATS_PER_BALL,
+  FLOATS_PER_PLAYER,
+  FrameState,
+  MAX_PLAYERS,
+  ParsedReplayData,
+  TOTAL_FLOATS_PER_FRAME,
+} from '../types/replay';
 import { getFrameSampleAtTime, unpackFrame } from './frameUnpacker';
 import { lastTouchAt } from './trails';
 
 const BALL_RADIUS = 92.75; // uu
+const TIME_OFFSET = FLOATS_PER_BALL + MAX_PLAYERS * FLOATS_PER_PLAYER;
+const GOAL_LINE_Z = 5120;
+const GOAL_TRIGGER_Z = GOAL_LINE_Z + BALL_RADIUS * 0.8;
+
+/**
+ * Replay tick marks for goals are placed ~1.5-2s before the ball enters the net so clicking
+ * a timeline marker plays the shot leading up to the goal. This finds the actual moment
+ * after `markTime` when the ball crosses the goal line into the net.
+ */
+export function resolveGoalScoredTime(data: ParsedReplayData, markTime: number): number {
+  const buffer = data.framesBuffer;
+  const totalFrames = data.totalFrames;
+  if (!totalFrames || !buffer.length) return markTime;
+
+  const { frameA } = getFrameSampleAtTime(data, markTime);
+  let bestTime = markTime;
+  let maxAbsZ = 0;
+
+  for (let f = frameA; f < totalFrames; f++) {
+    const offset = f * TOTAL_FLOATS_PER_FRAME;
+    const t = buffer[offset + TIME_OFFSET];
+    if (t < markTime) continue;
+    if (t > markTime + 3.5) break;
+
+    const absZ = Math.abs(buffer[offset + 2]);
+    // Stop if the ball has already reset to center field after being in the goal
+    if (maxAbsZ > GOAL_LINE_Z && absZ < 500) break;
+
+    if (absZ > maxAbsZ) {
+      maxAbsZ = absZ;
+      bestTime = t;
+    }
+    if (absZ >= GOAL_TRIGGER_Z) {
+      return t;
+    }
+  }
+
+  return maxAbsZ >= GOAL_LINE_Z ? bestTime : markTime;
+}
 
 /** A car further than this from the ball can't have made the touch. */
 const MAX_TOUCH_DISTANCE = 320; // uu
@@ -27,7 +73,7 @@ const TEAM_RGB: ReadonlyArray<readonly [number, number, number]> = [
 ];
 
 export interface Impact {
-  kind: 'hit' | 'demo' | 'spark';
+  kind: 'hit' | 'demo' | 'spark' | 'goal';
   time: number;
   /** Contact point, in Three.js space. */
   x: number; y: number; z: number;
@@ -104,6 +150,26 @@ export function buildImpacts(data: ParsedReplayData): Impact[] {
       team: demo.team,
     });
   }
+
+  for (const tm of data.tickMarks) {
+    if (tm.type !== 'goal') continue;
+    const goalTime = resolveGoalScoredTime(data, tm.time);
+    const state = stateAt(goalTime);
+    const ball = state.ball.position;
+    impacts.push({
+      kind: 'goal',
+      time: goalTime,
+      x: ball.x,
+      y: Math.max(ball.y, 130),
+      z: ball.z,
+      nx: 0,
+      ny: 0.2,
+      nz: ball.z < 0 ? 1 : -1,
+      strength: 1,
+      team: tm.team,
+    });
+  }
+
   buildContactSparks(data, impacts);
   return impacts.sort((a, b) => a.time - b.time);
 }
@@ -223,6 +289,8 @@ export function sampleImpacts(impacts: Impact[], time: number, emit: EmitImpactS
       if (age < SPARK_SECONDS) sampleSpark(impact, age, 0, emit);
     } else if (impact.kind === 'hit') {
       if (age < HIT_SECONDS) sampleHit(impact, age, emit);
+    } else if (impact.kind === 'goal') {
+      if (age < DEMO_SECONDS) sampleGoal(impact, age, emit);
     } else {
       sampleDemo(impact, age, emit);
     }
@@ -332,6 +400,94 @@ function sampleDemo(demo: Impact, age: number, emit: EmitImpactSprite) {
       3, 2.2 * (1 - t) + 0.6, 1.2 * (1 - t) + 0.2,
       1 - t * t,
       0
+    );
+  }
+}
+
+function sampleGoal(goal: Impact, age: number, emit: EmitImpactSprite) {
+  const [tr, tg, tb] = TEAM_RGB[goal.team];
+  const seed = Math.round(goal.time * 1000) + 99;
+
+  // 1. Blinding white-hot goal line flash.
+  if (age < 0.26) {
+    const t = age / 0.26;
+    emit(goal.x, goal.y, goal.z, 0, 0, 0, 320 + 380 * t, 5.5, 5.0, 4.5, (1 - t) * (1 - t), 0);
+  }
+
+  // 2. Twin expanding shockwave rings in the scoring team's colour.
+  if (age < 0.65) {
+    const t = age / 0.65;
+    emit(
+      goal.x, goal.y, goal.z + goal.nz * 120 * t,
+      0, 0, 0,
+      90 + 980 * easeOut(t),
+      2.6 * tr + 0.7, 2.6 * tg + 0.7, 2.6 * tb + 0.7,
+      Math.pow(1 - t, 1.35) * 0.9,
+      1
+    );
+  }
+  if (age > 0.07 && age < 0.82) {
+    const t = (age - 0.07) / 0.75;
+    emit(
+      goal.x, goal.y, goal.z + goal.nz * 240 * t,
+      0, 0, 0,
+      70 + 820 * easeOut(t),
+      2.2 * tr + 1.1, 2.2 * tg + 1.1, 2.2 * tb + 1.1,
+      Math.pow(1 - t, 1.4) * 0.75,
+      1
+    );
+  }
+
+  // 3. Team-coloured plasma clouds billowing out of the goal mouth.
+  for (let i = 0; i < 18; i++) {
+    const life = 0.55 + 0.35 * random(seed, i, 0);
+    if (age >= life) continue;
+    const t = age / life;
+    const dx = (random(seed, i, 1) * 2 - 1) * 1.4;
+    const dy = random(seed, i, 2) * 1.1 - 0.25;
+    const dz = goal.nz * (0.25 + 1.35 * random(seed, i, 3));
+    const reach = (240 + 380 * random(seed, i, 4)) * easeOut(t);
+    const heat = 1 - t;
+    emit(
+      goal.x + dx * reach,
+      Math.max(60, goal.y + dy * reach + 90 * t),
+      goal.z + dz * reach,
+      0, 0, 0,
+      (90 + 85 * random(seed, i, 5)) * (0.65 + 0.75 * t),
+      2.8 * tr + 1.2 * heat,
+      2.8 * tg + 1.2 * heat,
+      2.8 * tb + 1.2 * heat,
+      0.5 * (1 - t) * (1 - t),
+      0
+    );
+  }
+
+  // 4. High-velocity celebratory spark streamers blasting onto the pitch.
+  for (let i = 0; i < 36; i++) {
+    const life = 0.4 + 0.48 * random(seed, i + 200, 0);
+    if (age >= life) continue;
+    const dx = (random(seed, i + 200, 1) * 2 - 1) * 1.15;
+    const dy = random(seed, i + 200, 2) * 1.1 - 0.15;
+    const dz = goal.nz * (0.35 + 1.15 * random(seed, i + 200, 3));
+    const length = Math.hypot(dx, dy, dz) || 1;
+    const speed = 1350 + 1650 * random(seed, i + 200, 4);
+    const vx = (dx / length) * speed;
+    const vy = (dy / length) * speed;
+    const vz = (dz / length) * speed;
+    const vyNow = vy + GRAVITY * age;
+    const t = age / life;
+    const heat = 1 - t;
+    emit(
+      goal.x + vx * age,
+      Math.max(15, goal.y + vy * age + 0.5 * GRAVITY * age * age),
+      goal.z + vz * age,
+      vx * 0.04, vyNow * 0.04, vz * 0.04,
+      3.8 + 2.4 * heat,
+      2.4 * tr + 2.0 * heat,
+      2.4 * tg + 2.0 * heat,
+      2.4 * tb + 2.0 * heat,
+      1 - t * t,
+      2
     );
   }
 }

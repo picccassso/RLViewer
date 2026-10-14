@@ -39,11 +39,11 @@ export class ReplayAudio {
         this.master = this.context.createGain();
         this.master.gain.value = this.muted ? 0 : this.volume;
         this.compressor = this.context.createDynamicsCompressor();
-        this.compressor.threshold.value = -10;
-        this.compressor.knee.value = 12;
-        this.compressor.ratio.value = 8;
-        this.compressor.attack.value = 0.003;
-        this.compressor.release.value = 0.15;
+        this.compressor.threshold.value = -8;
+        this.compressor.knee.value = 14;
+        this.compressor.ratio.value = 5;
+        this.compressor.attack.value = 0.005;
+        this.compressor.release.value = 0.16;
         this.master.connect(this.compressor);
         this.compressor.connect(this.context.destination);
         for (const kind of Object.keys(SOUND_LENGTHS) as SoundKind[]) {
@@ -132,12 +132,27 @@ export class ReplayAudio {
     const dy = event.position.y - camera.position.y;
     const dz = event.position.z - camera.position.z;
     const distance = Math.hypot(dx, dy, dz);
-    const attenuation = 1 / (1 + (distance / (event.kind === 'demo' ? 3500 : 1800)) ** 1.5);
+    const falloffRadius =
+      event.kind === 'demo' ? 3500 :
+      event.kind === 'ball' ? 1950 :
+      event.kind === 'reset' ? 1400 :
+      event.kind === 'bump' ? 1200 :
+      event.kind === 'dodge' ? 850 :
+      event.kind === 'jump' ? 750 : 550; // 'land' stays tight around the watched car
+    const attenuation = 1 / (1 + (distance / falloffRadius) ** 1.65);
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.playbackRate.value = Math.min(2, Math.max(0.25, speed));
     const gain = context.createGain();
-    gain.gain.value = (0.25 + 0.75 * event.strength) * attenuation;
+    const kindWeight =
+      event.kind === 'land' ? 0.58 :
+      event.kind === 'jump' ? 0.68 :
+      event.kind === 'dodge' ? 0.75 :
+      event.kind === 'bump' ? 0.82 : 1.0;
+    const dynamicCurve = event.kind === 'ball'
+      ? 0.12 + 0.88 * Math.pow(event.strength, 1.3)
+      : 0.22 + 0.78 * event.strength;
+    gain.gain.value = kindWeight * dynamicCurve * attenuation;
     const pan = context.createStereoPanner();
     pan.pan.value = Math.max(-0.85, Math.min(0.85,
       (dx * this.right.x + dy * this.right.y + dz * this.right.z) / Math.max(distance, 1)));

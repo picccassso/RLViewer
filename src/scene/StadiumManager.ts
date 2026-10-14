@@ -197,68 +197,78 @@ export class StadiumManager {
     switch (mat.name.replace(/\.\d+$/, '')) {
       case 'Herbe':
         mat.metalness = 0;
-        mat.roughness = 0.9;
-        // Kept a notch darker than the cars, and only lightly reflective, so they stand out on it.
-        mat.color.setRGB(0.36, 0.6, 0.33);
-        mat.envMapIntensity = 0.5;
-        withTeamLightWash(mat, 0.3);
+        mat.roughness = 0.88;
+        // Rich floodlit emerald turf, kept a notch darker than the cars so they pop on it.
+        mat.color.setRGB(0.32, 0.58, 0.30);
+        mat.envMapIntensity = 0.55;
+        withTeamLightWash(mat, 0.34);
+        break;
+      case 'Blanc':
+        // Painted white field lines: crisp and lightly emissive under the stadium floodlights.
+        mat.roughness = 0.65;
+        mat.metalness = 0.05;
+        mat.emissive.setRGB(0.9, 0.95, 1.0);
+        mat.emissiveIntensity = 0.14;
         break;
       case 'Sol_Hexagone':
       case 'Detail_Milieu':
       case 'Centre':
-        mat.metalness = 0.15;
+        mat.metalness = 0.22;
+        mat.roughness = 0.55;
         break;
       case 'Sol_T1':
       case 'Goutière':
-        mat.metalness = 0.3;
+        mat.metalness = 0.38;
+        mat.roughness = 0.45;
         break;
       case 'bannière_pub':
         // LED advertising boards.
         mat.metalness = 0;
         mat.emissive.setRGB(1, 1, 1);
         mat.emissiveMap = mat.map;
-        mat.emissiveIntensity = 0.9;
+        mat.emissiveIntensity = 1.05;
         break;
       case 'Metal':
-        mat.color.setRGB(0.08, 0.085, 0.1);
-        mat.roughness = 0.4;
+        mat.color.setRGB(0.07, 0.08, 0.11);
+        mat.roughness = 0.36;
+        mat.metalness = 0.75;
         break;
       case 'Hexagone_T0':
       case 'Hexagone_T1':
         // Dome panels: a faint team-coloured glow instead of a mirror.
-        mat.metalness = 0.2;
+        mat.metalness = 0.22;
         mat.emissive.copy(team!);
-        mat.emissiveIntensity = 0.35;
+        mat.emissiveIntensity = 0.42;
         mat.transparent = true;
-        mat.opacity = 0.3;
+        mat.opacity = 0.32;
         mat.depthWrite = false;
         break;
       case 'Couleur_T0':
       case 'Couleur_T1':
         mat.emissive.copy(team!);
-        mat.emissiveIntensity = 0.35;
+        mat.emissiveIntensity = 0.45;
         break;
       case 'Cage_T0':
       case 'Cage_T1':
-        mat.emissiveIntensity = 2.2;
+        mat.emissiveIntensity = 2.5;
         break;
       case 'Sol_Trait_T0':
       case 'Sol_Trait_T1':
         // Team lines on the pitch: dimmed so they don't compete with same-team cars driving over
         // them. At grazing angles the floodlight reflections turned them a glowing lavender.
-        mat.color.multiplyScalar(0.45);
-        mat.roughness = 0.9;
+        mat.color.multiplyScalar(0.5);
+        mat.roughness = 0.88;
         mat.envMapIntensity = 0.3;
         mat.emissive.copy(team!);
         mat.emissiveMap = mat.map;
-        mat.emissiveIntensity = 0.1;
+        mat.emissiveIntensity = 0.16;
         break;
       case 'dégradé_transparent_T0':
       case 'dégradé_transparent_T1':
         // Glow bands running round the walls.
         mat.emissive.copy(team!);
         mat.emissiveMap = mat.map;
-        mat.emissiveIntensity = 1.4;
+        mat.emissiveIntensity = 1.65;
         break;
     }
     const layer = floorLayer(mat);

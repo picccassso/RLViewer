@@ -66,7 +66,7 @@ export class PostProcessing {
       type: THREE.HalfFloatType,
       samples: 4,
     });
-    this.bloomPass = new DetachedBloomPass(new THREE.Vector2(width, height), 0.55, 0.45, 0.92);
+    this.bloomPass = new DetachedBloomPass(new THREE.Vector2(width, height), 0.58, 0.45, 0.9);
 
     this.outputPass = new OutputPass();
     this.outputPass.renderToScreen = true;
@@ -76,7 +76,12 @@ export class PostProcessing {
     if (!material.fragmentShader.includes(sample)) throw new Error('OutputShader changed; update the bloom composite');
     material.fragmentShader = material.fragmentShader
       .replace('uniform sampler2D tDiffuse;', 'uniform sampler2D tDiffuse;\nuniform sampler2D tBloom;')
-      .replace(sample, 'gl_FragColor = texture2D( tDiffuse, vUv ) + vec4( texture2D( tBloom, vUv ).rgb, 0.0 );');
+      .replace(
+        sample,
+        `vec2 vigUv = vUv - 0.5;
+        float vig = 1.0 - dot(vigUv, vigUv) * 0.24;
+        gl_FragColor = vec4((texture2D( tDiffuse, vUv ).rgb + texture2D( tBloom, vUv ).rgb) * vig, 1.0);`
+      );
   }
 
   public render(scene: THREE.Scene, camera: THREE.Camera) {

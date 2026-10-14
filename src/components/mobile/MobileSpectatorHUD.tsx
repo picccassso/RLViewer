@@ -376,6 +376,7 @@ export const MobileSpectatorHUD: React.FC<MobileSpectatorHUDProps> = ({
             {showMap && (
               <TacticalMinimap
                 frameState={frameState}
+                boostPads={replayData.boostPads}
                 activePlayerIndex={activePlayerIndex}
                 onSelectPlayer={onSelectPlayer}
                 defaultCollapsed={false}

@@ -10,7 +10,7 @@ import { buildWheelTravel, sampleWheelTravel } from '../math/wheelRotation';
 export { HITBOX_DIMENSIONS };
 
 /** Height of a nameplate's bottom edge above the car, straight up in world space. */
-const NAMEPLATE_HEIGHT = 110;
+const NAMEPLATE_HEIGHT = 90;
 
 /**
  * Player name label with a boost bar underneath, drawn by the browser over the 3D view
@@ -34,22 +34,26 @@ function createNameplate(info: PlayerInfo): { nameplate: THREE.Object3D; boostFi
   return { nameplate, boostFill };
 }
 
-const TEAM_PAINT = [new THREE.Color(0x1d6bff), new THREE.Color(0xff5a00)];
+const TEAM_PAINT = [new THREE.Color(0x1674ff), new THREE.Color(0xff5e00)];
+const TEAM_PEARL = [new THREE.Color(0x52c5ff), new THREE.Color(0xffb838)];
 
 /**
  * Car textures are white where the paint goes and grey, black or coloured for trims, lights and glass.
  * Tinting the whole texture turns those details the team colour too, so only the near-white,
- * colourless texels take the paint; that paint also gets a faint glow so cars read against the pitch.
+ * colourless texels take the paint; that paint also gets an anodized metallic pearlescent sheen
+ * and a faint glow so cars read crisply against the pitch.
  */
 export function applyTeamPaint(mat: THREE.MeshStandardMaterial, team: 0 | 1) {
   const paint = TEAM_PAINT[team];
-  mat.roughness = 0.38;
-  mat.metalness = 0.2;
-  mat.envMapIntensity = 0.8;
+  const pearl = TEAM_PEARL[team];
+  mat.roughness = 0.26;
+  mat.metalness = 0.34;
+  mat.envMapIntensity = 1.18;
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.teamPaint = { value: paint };
+    shader.uniforms.teamPearl = { value: pearl };
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 teamPaint;')
+      .replace('#include <common>', '#include <common>\nuniform vec3 teamPaint;\nuniform vec3 teamPearl;')
       .replace(
         '#include <map_fragment>',
         `#include <map_fragment>
@@ -61,16 +65,17 @@ export function applyTeamPaint(mat: THREE.MeshStandardMaterial, team: 0 | 1) {
       )
       .replace(
         '#include <emissivemap_fragment>',
-        '#include <emissivemap_fragment>\ntotalEmissiveRadiance += teamPaint * paintMask * 0.12;'
+        `#include <emissivemap_fragment>
+        float pearlRim = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 2.4);
+        totalEmissiveRadiance += teamPaint * paintMask * 0.12 + teamPearl * paintMask * pearlRim * 0.18;`
       );
   };
-  mat.customProgramCacheKey = () => 'team-paint';
+  mat.customProgramCacheKey = () => `team-paint-${team}`;
 }
 
 /**
- * One exhaust's Alpha Boost flame: a gold glow on the nozzle, as wide as the exhaust and
- * bright enough to bloom, and a short gold jet. The layers add up to a pale-gold centre
- * (#fceaa0 after tone mapping) inside solid gold (#efc248), rather than white.
+ * One exhaust's Alpha Boost flame: a hot Mach-diamond core, a gold glow on the nozzle
+ * bright enough to bloom, and a layered golden-amber plasma jet.
  */
 function createFlameJet(_team?: 0 | 1): THREE.Group {
   const jet = new THREE.Group();
@@ -84,8 +89,9 @@ function createFlameJet(_team?: 0 | 1): THREE.Group {
   });
 
   const flameLayers: Array<[radius: number, length: number, color: THREE.Color, opacity: number]> = [
-    [7.5, 48, new THREE.Color(1.0, 0.38, 0.01).multiplyScalar(1.3), 0.45],
-    [3.8, 30, new THREE.Color(1.0, 0.45, 0.03).multiplyScalar(1.4), 0.6],
+    [8.2, 54, new THREE.Color(1.0, 0.34, 0.01).multiplyScalar(1.35), 0.44],
+    [4.4, 34, new THREE.Color(1.0, 0.48, 0.04).multiplyScalar(1.5), 0.65],
+    [2.1, 18, new THREE.Color(1.0, 0.72, 0.22).multiplyScalar(1.75), 0.85],
   ];
   for (const [radius, length, color, opacity] of flameLayers) {
     const geometry = new THREE.ConeGeometry(radius, length, 16, 1, true);
@@ -97,8 +103,8 @@ function createFlameJet(_team?: 0 | 1): THREE.Group {
 
   // Nozzle glow: a soft gold halo around a hotter gold core, just behind the exhaust.
   const glowLayers: Array<[radius: number, color: THREE.Color, opacity: number]> = [
-    [11, new THREE.Color(1.0, 0.38, 0.01).multiplyScalar(1.2), 0.5],
-    [6, new THREE.Color(1.0, 0.45, 0.03).multiplyScalar(1.2), 0.8],
+    [11.5, new THREE.Color(1.0, 0.38, 0.01).multiplyScalar(1.25), 0.52],
+    [6.2, new THREE.Color(1.0, 0.52, 0.06).multiplyScalar(1.35), 0.85],
   ];
   for (const [radius, color, opacity] of glowLayers) {
     const glow = new THREE.Mesh(new THREE.SphereGeometry(radius, 16, 12), additive(color, opacity));
